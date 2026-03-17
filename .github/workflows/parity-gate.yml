@@ -1,0 +1,80 @@
+name: parity-gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      legacy_base:
+        description: "Legacy API base URL"
+        required: true
+        default: "http://host.docker.internal:8000"
+      migrated_base:
+        description: "Migrated API base URL"
+        required: true
+        default: "http://host.docker.internal:8010"
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  parity-smoke:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start local migrated stack
+        run: |
+          ./bin/start_local_stack.sh
+      - name: Wait for API health
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8000/healthz >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Timed out waiting for migrated API" >&2
+          exit 1
+      - name: Run parity smoke (migrated vs migrated)
+        env:
+          LEGACY_BASE: http://host.docker.internal:8000
+          MIGRATED_BASE: http://host.docker.internal:8000
+          PRED_TOLERANCE: "0.0"
+          MIN_COMMON_POINTS: "1"
+          MAX_MEAN_ABS_DIFF: "0.0"
+          MAX_MAX_ABS_DIFF: "0.0"
+          MAX_P95_ABS_DIFF: "0.0"
+          REPORT_FILE: "shared/parity/last-report.json"
+        run: |
+          ./bin/parity_gate.sh
+      - name: Upload parity smoke report
+        uses: actions/upload-artifact@v4
+        with:
+          name: parity-smoke-report
+          path: shared/parity/last-report.json
+      - name: Stop local stack
+        if: always()
+        run: |
+          ./bin/stop_local_stack.sh || true
+
+  parity-check:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run parity gate script (Docker)
+        env:
+          LEGACY_BASE: ${{ github.event.inputs.legacy_base || 'http://host.docker.internal:8000' }}
+          MIGRATED_BASE: ${{ github.event.inputs.migrated_base || 'http://host.docker.internal:8010' }}
+          PRED_TOLERANCE: "0.25"
+          MIN_COMMON_POINTS: "1"
+          MAX_MEAN_ABS_DIFF: "0.15"
+          MAX_MAX_ABS_DIFF: "0.25"
+          MAX_P95_ABS_DIFF: "0.2"
+          REPORT_FILE: "shared/parity/last-report.json"
+        run: |
+          ./bin/parity_gate.sh
+      - name: Upload parity report
+        uses: actions/upload-artifact@v4
+        with:
+          name: parity-report
+          path: shared/parity/last-report.json
