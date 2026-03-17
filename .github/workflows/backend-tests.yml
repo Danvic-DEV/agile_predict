@@ -1,0 +1,16 @@
+name: backend-tests
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run migration backend tests (Docker)
+        run: |
+          ./bin/test_backend.sh

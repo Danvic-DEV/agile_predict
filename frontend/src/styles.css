@@ -1,0 +1,247 @@
+:root {
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  color: #f4f1e8;
+  background: radial-gradient(circle at 20% 20%, #25444d, #121b24 45%, #0a1016 100%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+.page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 32px 20px;
+}
+
+.hero h1 {
+  margin: 0;
+  font-size: clamp(2rem, 6vw, 4rem);
+  letter-spacing: 0.04em;
+}
+
+.hero p {
+  margin-top: 8px;
+  color: #c9d6dc;
+}
+
+.card {
+  margin-top: 24px;
+  border: 1px solid rgba(201, 214, 220, 0.3);
+  border-radius: 14px;
+  padding: 20px;
+  background: rgba(7, 16, 24, 0.5);
+  backdrop-filter: blur(2px);
+}
+
+.card h2 {
+  margin-top: 0;
+}
+
+.controls-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.controls-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.85rem;
+}
+
+.controls-row input,
+.controls-row select,
+.controls-row button {
+  border-radius: 8px;
+  border: 1px solid rgba(201, 214, 220, 0.35);
+  background: rgba(10, 20, 30, 0.65);
+  color: #f4f1e8;
+  padding: 8px 10px;
+}
+
+.controls-row button {
+  cursor: pointer;
+  align-self: end;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.metric-grid div {
+  border: 1px solid rgba(201, 214, 220, 0.18);
+  border-radius: 10px;
+  padding: 10px;
+  background: rgba(17, 26, 35, 0.45);
+}
+
+.label {
+  display: block;
+  font-size: 0.75rem;
+  color: #9eb2be;
+  margin-bottom: 6px;
+}
+
+.update-run-card {
+  margin-top: 2px;
+  border: 1px solid rgba(201, 214, 220, 0.2);
+  border-radius: 10px;
+  padding: 12px;
+  background: rgba(17, 26, 35, 0.45);
+}
+
+.update-run-card h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #c9d6dc;
+}
+
+.update-run-topline {
+  margin-top: 4px;
+  margin-bottom: 10px;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.update-run-grid {
+  display: grid;
+  grid-template-columns: minmax(120px, 180px) 1fr;
+  gap: 6px 10px;
+}
+
+.update-run-grid span {
+  color: #9eb2be;
+  font-size: 0.82rem;
+}
+
+.update-run-grid strong {
+  font-size: 0.92rem;
+}
+
+.parity-detail-card {
+  margin-top: 12px;
+  border: 1px solid rgba(201, 214, 220, 0.18);
+  border-radius: 10px;
+  padding: 12px;
+  background: rgba(17, 26, 35, 0.45);
+}
+
+.parity-detail-card h3 {
+  margin: 0 0 10px;
+  font-size: 0.95rem;
+  color: #c9d6dc;
+}
+
+.threshold-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.threshold-chip {
+  display: inline-block;
+  border: 1px solid rgba(201, 214, 220, 0.28);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  background: rgba(10, 20, 30, 0.65);
+}
+
+.failure-list {
+  margin: 0;
+  padding-left: 18px;
+  color: #f3c9c9;
+}
+
+.failure-list li + li {
+  margin-top: 6px;
+}
+
+.history-list {
+  margin: 0;
+  padding-left: 18px;
+  color: #c9d6dc;
+  font-size: 0.86rem;
+}
+
+.history-list li + li {
+  margin-top: 6px;
+}
+
+.chart-card,
+.table-card {
+  margin-top: 12px;
+  border: 1px solid rgba(201, 214, 220, 0.18);
+  border-radius: 10px;
+  padding: 12px;
+  background: rgba(17, 26, 35, 0.45);
+}
+
+.chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.chart-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: #f4f1e8;
+}
+
+.chart-header span {
+  color: #9eb2be;
+  font-size: 0.85rem;
+}
+
+.forecast-chart {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 8px;
+  background:
+    linear-gradient(to top, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0)),
+    rgba(10, 20, 30, 0.65);
+}
+
+.forecast-chart-line {
+  fill: none;
+  stroke: #f2b84b;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.slot-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.slot-table th,
+.slot-table td {
+  padding: 8px 6px;
+  border-bottom: 1px solid rgba(201, 214, 220, 0.12);
+  text-align: left;
+}
+
+.slot-table th {
+  color: #9eb2be;
+  font-weight: 600;
+}
+
+.slot-table tbody tr:last-child td {
+  border-bottom: 0;
+}

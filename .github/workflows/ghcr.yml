@@ -1,0 +1,36 @@
+name: build-and-push-ghcr
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-app:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Extract tags
+        id: meta
+        run: |
+          TAG=${GITHUB_REF_NAME}
+          MAJOR_MINOR=$(echo "$TAG" | sed -E 's/^v([0-9]+\.[0-9]+)\..*/\1/')
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "major_minor=$MAJOR_MINOR" >> "$GITHUB_OUTPUT"
+      - name: Build and push unified app image
+        run: |
+          IMAGE=ghcr.io/${{ github.repository_owner }}/agile-predict
+          docker build -f deploy/docker/backend.Dockerfile -t $IMAGE:${{ steps.meta.outputs.tag }} -t $IMAGE:${{ steps.meta.outputs.major_minor }} -t $IMAGE:latest .
+          docker push $IMAGE:${{ steps.meta.outputs.tag }}
+          docker push $IMAGE:${{ steps.meta.outputs.major_minor }}
+          docker push $IMAGE:latest
