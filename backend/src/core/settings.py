@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     auto_update_enabled: bool = Field(default=True, alias="AUTO_UPDATE_ENABLED")
     auto_update_interval_seconds: int = Field(default=1800, alias="AUTO_UPDATE_INTERVAL_SECONDS")
     auto_update_run_immediately: bool = Field(default=False, alias="AUTO_UPDATE_RUN_IMMEDIATELY")
-    ml_write_mode: str = Field(default="ml", alias="ML_WRITE_MODE")
+    ml_write_mode: str = Field(default="deterministic", alias="ML_WRITE_MODE")
     allow_ingest_fallback: bool = Field(default=False, alias="ALLOW_INGEST_FALLBACK")
     allow_ml_fallback: bool = Field(default=False, alias="ALLOW_ML_FALLBACK")
     allow_startup_bootstrap_fallback: bool = Field(default=False, alias="ALLOW_STARTUP_BOOTSTRAP_FALLBACK")
