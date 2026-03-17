@@ -178,6 +178,41 @@ body {
   margin-top: 6px;
 }
 
+.scorecard-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.scorecard-confidence {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.scorecard-confidence.low {
+  color: #ffb0b0;
+  border: 1px solid rgba(255, 176, 176, 0.4);
+  background: rgba(120, 30, 30, 0.35);
+}
+
+.scorecard-confidence.medium {
+  color: #f2d597;
+  border: 1px solid rgba(242, 213, 151, 0.4);
+  background: rgba(95, 70, 20, 0.35);
+}
+
+.scorecard-confidence.high {
+  color: #b9f0c5;
+  border: 1px solid rgba(185, 240, 197, 0.4);
+  background: rgba(20, 90, 45, 0.35);
+}
+
 .chart-card,
 .table-card {
   margin-top: 12px;
@@ -245,3 +280,92 @@ body {
 .slot-table tbody tr:last-child td {
   border-bottom: 0;
 }
+
+.training-mode-banner {
+  background: linear-gradient(
+    135deg,
+    rgba(242, 184, 75, 0.15),
+    rgba(242, 184, 75, 0.08)
+  );
+  border: 1px solid rgba(242, 184, 75, 0.3);
+  border-radius: 12px;
+  padding: 14px 18px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.banner-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  flex: 1;
+}
+
+.banner-icon {
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+.banner-text {
+  flex: 1;
+}
+
+.banner-text strong {
+  display: block;
+  color: #f2b84b;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+.banner-text p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #c9d6dc;
+  line-height: 1.4;
+}
+
+.banner-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.banner-meta-value {
+  display: inline-block;
+  border-radius: 999px;
+  border: 1px solid rgba(201, 214, 220, 0.28);
+  padding: 4px 10px;
+  font-size: 0.78rem;
+  color: #d8e2e7;
+  background: rgba(17, 26, 35, 0.45);
+}
+
+.banner-error {
+  margin-top: 8px;
+  color: #ffb0b0;
+  font-size: 0.82rem;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(185, 240, 197, 0.35);
+  background: rgba(20, 90, 45, 0.2);
+  padding: 8px 12px;
+  margin-bottom: 16px;
+}
+
+.status-pill-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #b9f0c5;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+

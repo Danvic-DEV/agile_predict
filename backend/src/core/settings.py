@@ -42,6 +42,13 @@ class Settings(BaseSettings):
     auto_bootstrap_mode: str = Field(default="update", alias="AUTO_BOOTSTRAP_MODE")
     auto_bootstrap_points: int = Field(default=96, alias="AUTO_BOOTSTRAP_POINTS")
     auto_bootstrap_regions: str = Field(default="X,G", alias="AUTO_BOOTSTRAP_REGIONS")
+    auto_update_enabled: bool = Field(default=True, alias="AUTO_UPDATE_ENABLED")
+    auto_update_interval_seconds: int = Field(default=1800, alias="AUTO_UPDATE_INTERVAL_SECONDS")
+    auto_update_run_immediately: bool = Field(default=False, alias="AUTO_UPDATE_RUN_IMMEDIATELY")
+    ml_write_mode: str = Field(default="ml", alias="ML_WRITE_MODE")
+    allow_ingest_fallback: bool = Field(default=False, alias="ALLOW_INGEST_FALLBACK")
+    allow_ml_fallback: bool = Field(default=False, alias="ALLOW_ML_FALLBACK")
+    allow_startup_bootstrap_fallback: bool = Field(default=False, alias="ALLOW_STARTUP_BOOTSTRAP_FALLBACK")
 
     def validate_db_mode(self) -> None:
         if self.db_mode not in {"external", "local"}:
@@ -52,6 +59,12 @@ class Settings(BaseSettings):
 
         if self.auto_bootstrap_mode not in {"update", "bootstrap"}:
             raise ValueError("AUTO_BOOTSTRAP_MODE must be 'update' or 'bootstrap'.")
+
+        if self.ml_write_mode not in {"ml", "deterministic", "shadow"}:
+            raise ValueError("ML_WRITE_MODE must be 'ml', 'deterministic', or 'shadow'.")
+
+        if self.auto_update_interval_seconds < 60:
+            raise ValueError("AUTO_UPDATE_INTERVAL_SECONDS must be >= 60.")
 
     @property
     def cors_origins_list(self) -> list[str]:

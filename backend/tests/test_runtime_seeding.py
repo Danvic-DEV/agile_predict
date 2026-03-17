@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, cast
+import pytest
 
 from src.core import runtime
 
@@ -40,25 +41,19 @@ def test_seed_empty_database_prefers_update_mode(monkeypatch) -> None:
     assert uow.rollback_called is False
 
 
-def test_seed_empty_database_falls_back_to_bootstrap(monkeypatch) -> None:
+def test_seed_empty_database_raises_when_update_writes_zero_and_fallback_disabled(monkeypatch) -> None:
     uow = _FakeUow()
-    bootstrap_calls = {"count": 0}
 
     monkeypatch.setattr(runtime.settings, "auto_bootstrap_mode", "update")
+    monkeypatch.setattr(runtime.settings, "allow_startup_bootstrap_fallback", False)
 
     def _fake_run_update_forecast_job(*, uow: Any) -> _Result:
         return _Result(records_written=0, forecast_name="empty")
 
-    def _bootstrap(uow: Any) -> None:
-        bootstrap_calls["count"] += 1
-
     monkeypatch.setattr(runtime, "run_update_forecast_job", _fake_run_update_forecast_job)
-    monkeypatch.setattr(runtime, "_write_bootstrap_seed", _bootstrap)
 
-    mode = runtime.seed_empty_database(uow=cast(Any, uow))
-
-    assert mode == "bootstrap-fallback"
-    assert bootstrap_calls["count"] == 1
+    with pytest.raises(RuntimeError):
+        runtime.seed_empty_database(uow=cast(Any, uow))
 
 
 def test_seed_empty_database_bootstrap_mode(monkeypatch) -> None:
@@ -78,11 +73,29 @@ def test_seed_empty_database_bootstrap_mode(monkeypatch) -> None:
     assert bootstrap_calls["count"] == 1
 
 
-def test_seed_empty_database_update_exception_rolls_back_and_bootstraps(monkeypatch) -> None:
+def test_seed_empty_database_update_exception_raises_when_fallback_disabled(monkeypatch) -> None:
+    uow = _FakeUow()
+
+    monkeypatch.setattr(runtime.settings, "auto_bootstrap_mode", "update")
+    monkeypatch.setattr(runtime.settings, "allow_startup_bootstrap_fallback", False)
+
+    def _raise_update(*, uow: Any) -> _Result:
+        raise RuntimeError("simulated update failure")
+
+    monkeypatch.setattr(runtime, "run_update_forecast_job", _raise_update)
+
+    with pytest.raises(RuntimeError):
+        runtime.seed_empty_database(uow=cast(Any, uow))
+
+    assert uow.rollback_called is True
+
+
+def test_seed_empty_database_bootstrap_fallback_can_be_explicitly_enabled(monkeypatch) -> None:
     uow = _FakeUow()
     bootstrap_calls = {"count": 0}
 
     monkeypatch.setattr(runtime.settings, "auto_bootstrap_mode", "update")
+    monkeypatch.setattr(runtime.settings, "allow_startup_bootstrap_fallback", True)
 
     def _raise_update(*, uow: Any) -> _Result:
         raise RuntimeError("simulated update failure")
@@ -96,5 +109,4 @@ def test_seed_empty_database_update_exception_rolls_back_and_bootstraps(monkeypa
     mode = runtime.seed_empty_database(uow=cast(Any, uow))
 
     assert mode == "bootstrap-fallback"
-    assert uow.rollback_called is True
     assert bootstrap_calls["count"] == 1

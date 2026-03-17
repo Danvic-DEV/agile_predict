@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
 from urllib.parse import urlencode
-from urllib.request import urlopen
+from urllib.request import urlopen, Request
 import json
 
 NORDPOOL_DAY_AHEAD_URL = "https://dataportal-api.nordpoolgroup.com/api/DayAheadPrices"
@@ -40,7 +40,8 @@ def fetch_day_ahead_prices(now: datetime | None = None, timeout: int = 20) -> di
     query = urlencode(params)
     url = f"{NORDPOOL_DAY_AHEAD_URL}?{query}"
 
-    with urlopen(url, timeout=timeout) as response:
+    req = Request(url, headers={"User-Agent": "Mozilla/5.0 (compatible; agile-predict)"})
+    with urlopen(req, timeout=timeout) as response:
         payload = json.loads(response.read().decode("utf-8"))
 
     return parse_day_ahead_payload(payload)

@@ -6,6 +6,7 @@ import time
 
 import pandas as pd
 
+from src.core.settings import settings
 from src.ml.features import add_time_features
 from src.ml.ingest import fetch_day_ahead_prices
 from src.ml.transforms import day_ahead_to_agile
@@ -64,14 +65,19 @@ def _ingest_stage(
             if attempt < max_attempts - 1:
                 time.sleep(retry_backoff_seconds * (attempt + 1))
 
-    fallback = _fallback_day_ahead_series(points=fallback_points)
-    return fallback, "fallback", last_error, max_attempts - 1, len(fallback)
+    if settings.allow_ingest_fallback:
+        fallback = _fallback_day_ahead_series(points=fallback_points)
+        return fallback, "fallback", last_error, max_attempts - 1, len(fallback)
+
+    raise RuntimeError(f"day-ahead ingest failed after {max_attempts} attempts: {last_error}")
 
 
 def _quality_stage(day_ahead: pd.Series, max_points: int = 48) -> tuple[pd.Series, int]:
     if day_ahead.empty:
-        fallback = _fallback_day_ahead_series(points=max_points)
-        return fallback, 0
+        if settings.allow_ingest_fallback:
+            fallback = _fallback_day_ahead_series(points=max_points)
+            return fallback, 0
+        raise ValueError("quality stage received empty day-ahead series")
 
     series = day_ahead.sort_index()
     series = series.groupby(series.index).mean()

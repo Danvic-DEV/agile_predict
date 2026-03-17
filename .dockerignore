@@ -9,3 +9,7 @@ logs/
 static/
 plots/
 environment.yml
+frontend/node_modules/
+frontend/dist/
+backend/.venv/
+runtime-config/

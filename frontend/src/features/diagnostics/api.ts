@@ -3,6 +3,7 @@ import type {
   BootstrapForecastBundleRequest,
   BootstrapForecastBundleResponse,
   LatestForecastDiagnostics,
+  MlParityScorecard,
   ParityHistoryResponse,
   LatestParitySummary,
   RunUpdateJobResponse,
@@ -14,6 +15,12 @@ export function fetchLatestDiagnostics(): Promise<LatestForecastDiagnostics> {
 
 export function fetchLatestParitySummary(): Promise<LatestParitySummary> {
   return getJson<LatestParitySummary>("/diagnostics/parity-last-summary");
+}
+
+export function fetchMlParityScorecard(windowSize = 30): Promise<MlParityScorecard> {
+  const params = new URLSearchParams();
+  params.set("window_size", String(windowSize));
+  return getJson<MlParityScorecard>(`/diagnostics/ml-parity-scorecard?${params.toString()}`);
 }
 
 export function fetchParityHistory(options?: {

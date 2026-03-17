@@ -177,3 +177,8 @@ curl -X POST http://localhost:8010/api/v1/admin-jobs/bootstrap-forecast-bundle \
 
 - Use `./bin/parity_signoff.sh` for release-candidate parity approval; it fails non-zero when parity is not fully passing.
 - Follow `docs/release-rehearsal.md` for the full pre-release checklist (tests, parity smoke, real parity signoff, diagnostics, artifacts).
+
+## ML Parity Plan
+
+- Legacy Django ML behavior is being ported with architecture parity in `docs/ml-parity-plan.md`.
+- This plan captures the exact legacy `update.py` training behavior (features, XGBoost parameters, sample weighting, confidence interval generation, and regional output conversion) and maps it to the FastAPI pipeline.

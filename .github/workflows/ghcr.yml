@@ -2,6 +2,8 @@ name: build-and-push-ghcr
 
 on:
   push:
+    branches:
+      - "**"
     tags:
       - "v*.*.*"
   workflow_dispatch:
@@ -23,14 +25,26 @@ jobs:
       - name: Extract tags
         id: meta
         run: |
-          TAG=${GITHUB_REF_NAME}
-          MAJOR_MINOR=$(echo "$TAG" | sed -E 's/^v([0-9]+\.[0-9]+)\..*/\1/')
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "major_minor=$MAJOR_MINOR" >> "$GITHUB_OUTPUT"
+          REF_NAME=${GITHUB_REF_NAME}
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            TAG=${REF_NAME}
+            MAJOR_MINOR=$(echo "$TAG" | sed -E 's/^v([0-9]+\.[0-9]+)\..*/\1/')
+            echo "is_release=true" >> "$GITHUB_OUTPUT"
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+            echo "major_minor=$MAJOR_MINOR" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_release=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Build and push unified app image
         run: |
           IMAGE=ghcr.io/${{ github.repository_owner }}/agile-predict
-          docker build -f deploy/docker/backend.Dockerfile -t $IMAGE:${{ steps.meta.outputs.tag }} -t $IMAGE:${{ steps.meta.outputs.major_minor }} -t $IMAGE:latest .
-          docker push $IMAGE:${{ steps.meta.outputs.tag }}
-          docker push $IMAGE:${{ steps.meta.outputs.major_minor }}
-          docker push $IMAGE:latest
+          SHORT_SHA=${GITHUB_SHA::7}
+          docker build -f deploy/docker/backend.Dockerfile -t $IMAGE:dev -t $IMAGE:sha-${SHORT_SHA} .
+          docker push $IMAGE:dev
+          docker push $IMAGE:sha-${SHORT_SHA}
+          if [[ "${{ steps.meta.outputs.is_release }}" == "true" ]]; then
+            docker tag $IMAGE:dev $IMAGE:${{ steps.meta.outputs.tag }}
+            docker tag $IMAGE:dev $IMAGE:${{ steps.meta.outputs.major_minor }}
+            docker push $IMAGE:${{ steps.meta.outputs.tag }}
+            docker push $IMAGE:${{ steps.meta.outputs.major_minor }}
+          fi

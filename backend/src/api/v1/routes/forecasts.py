@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query
 
 from src.api.v1.deps import UnitOfWorkDep, ForecastRepositoryDep
+from src.api.errors import http_error
 from src.core.regions import REGION_FACTORS
 from src.schemas.forecast import ForecastDataPoint, ForecastSummary, ForecastWithPrices
 
@@ -48,7 +49,7 @@ def get_forecast_data_stats(
 ) -> dict[str, float | int | str | None]:
     rows = uow.forecast_data.list_for_forecast(forecast_id=forecast_id, limit=limit)
     if not rows:
-        raise HTTPException(status_code=404, detail="No forecast data rows found for forecast_id")
+        raise http_error(404, "forecast_data_not_found", "No forecast data rows found for forecast_id.")
 
     day_ahead_values = [r.day_ahead for r in rows if r.day_ahead is not None]
     stats: dict[str, float | int | str | None] = {

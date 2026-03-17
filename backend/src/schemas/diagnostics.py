@@ -24,6 +24,19 @@ class LatestForecastDiagnostics(BaseModel):
     update_aligned_points: int | None
     update_interpolated_points: int | None
     update_retries_used: int | None
+    update_ml_error: str | None
+    update_ml_training_rows: int | None
+    update_ml_test_rows: int | None
+    update_ml_cv_mean_rmse: float | None
+    update_ml_cv_stdev_rmse: float | None
+    update_ml_feature_version: str | None
+    update_ml_range_mode: str | None
+    update_ml_candidate_points: int | None
+    update_ml_compare_mae: float | None
+    update_ml_compare_max_abs: float | None
+    update_ml_compare_p95_abs: float | None
+    update_ml_write_mode: str | None
+    training_mode: bool = False
 
 
 class LatestParitySummary(BaseModel):
@@ -58,3 +71,18 @@ class ParityHistoryResponse(BaseModel):
     limit: int
     offset: int
     returned: int
+
+
+class MlParityScorecard(BaseModel):
+    report_available: bool
+    training_mode: bool
+    configured_write_mode: str | None
+    effective_mode: str
+    sample_size: int
+    window_size: int
+    rolling_mae_vs_deterministic: float | None
+    rolling_p95_abs_vs_deterministic: float | None
+    rolling_max_abs_vs_deterministic: float | None
+    confidence_percent: float
+    confidence_label: str
+    latest_error: str | None

@@ -40,6 +40,19 @@ export interface LatestForecastDiagnostics {
   update_aligned_points: number | null;
   update_interpolated_points: number | null;
   update_retries_used: number | null;
+  update_ml_error: string | null;
+  update_ml_training_rows: number | null;
+  update_ml_test_rows: number | null;
+  update_ml_cv_mean_rmse: number | null;
+  update_ml_cv_stdev_rmse: number | null;
+  update_ml_feature_version: string | null;
+  update_ml_range_mode: string | null;
+  update_ml_candidate_points: number | null;
+  update_ml_compare_mae: number | null;
+  update_ml_compare_max_abs: number | null;
+  update_ml_compare_p95_abs: number | null;
+  update_ml_write_mode: string | null;
+  training_mode: boolean;
 }
 
 export interface BootstrapForecastBundleRequest {
@@ -99,4 +112,19 @@ export interface ParityHistoryResponse {
   limit: number;
   offset: number;
   returned: number;
+}
+
+export interface MlParityScorecard {
+  report_available: boolean;
+  training_mode: boolean;
+  configured_write_mode: string | null;
+  effective_mode: string;
+  sample_size: number;
+  window_size: number;
+  rolling_mae_vs_deterministic: number | null;
+  rolling_p95_abs_vs_deterministic: number | null;
+  rolling_max_abs_vs_deterministic: number | null;
+  confidence_percent: number;
+  confidence_label: string;
+  latest_error: string | null;
 }

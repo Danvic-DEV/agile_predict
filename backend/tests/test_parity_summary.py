@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import os
 
+import pytest
+
 from src.api.v1.routes import diagnostics as diagnostics_routes
 
 
@@ -187,3 +189,68 @@ def test_parity_history_supports_offset_pagination(monkeypatch, tmp_path) -> Non
     assert page.total == 3
     assert page.returned == 2
     assert len(page.items) == 2
+
+
+def test_parity_history_invalid_iso_filter_returns_structured_error() -> None:
+    with pytest.raises(Exception) as exc_info:
+        diagnostics_routes.parity_history(limit=10, since="not-a-datetime")
+
+    err = exc_info.value
+    assert getattr(err, "status_code", None) == 422
+    assert err.detail["code"] == "invalid_iso_datetime_filter"
+    assert err.detail["message"] == "Invalid ISO datetime filter."
+    assert err.detail["error_type"] == "ValueError"
+
+
+def test_latest_summary_no_forecasts_returns_structured_404() -> None:
+    class _ForecastsRepo:
+        def list_latest(self, limit: int = 1):
+            return []
+
+    class _FakeUow:
+        forecasts = _ForecastsRepo()
+
+    with pytest.raises(Exception) as exc_info:
+        diagnostics_routes.latest_summary(uow=_FakeUow())
+
+    err = exc_info.value
+    assert getattr(err, "status_code", None) == 404
+    assert err.detail["code"] == "no_forecasts_found"
+    assert err.detail["message"] == "No forecasts found."
+
+
+def test_ml_parity_scorecard_reports_low_confidence_when_no_history(monkeypatch) -> None:
+    monkeypatch.setattr(diagnostics_routes, "read_last_update_job_state", lambda: {"training_mode": True, "ml_write_mode": "deterministic", "ml_error": "collecting"})
+    monkeypatch.setattr(diagnostics_routes, "read_update_job_history", lambda limit=200: [])
+
+    scorecard = diagnostics_routes.ml_parity_scorecard(window_size=30)
+
+    assert scorecard.report_available is False
+    assert scorecard.training_mode is True
+    assert scorecard.sample_size == 0
+    assert scorecard.rolling_mae_vs_deterministic is None
+    assert scorecard.rolling_p95_abs_vs_deterministic is None
+    assert scorecard.confidence_percent == 0.0
+    assert scorecard.confidence_label == "low"
+
+
+def test_ml_parity_scorecard_reports_confidence_from_rolling_metrics(monkeypatch) -> None:
+    history = [
+        {"ml_compare_mae": 2.5, "ml_compare_p95_abs": 7.0, "ml_compare_max_abs": 10.0},
+        {"ml_compare_mae": 2.0, "ml_compare_p95_abs": 6.0, "ml_compare_max_abs": 9.0},
+        {"ml_compare_mae": 1.5, "ml_compare_p95_abs": 5.0, "ml_compare_max_abs": 8.0},
+    ]
+    monkeypatch.setattr(diagnostics_routes, "read_last_update_job_state", lambda: {"training_mode": False, "ml_write_mode": "ml", "ml_error": None})
+    monkeypatch.setattr(diagnostics_routes, "read_update_job_history", lambda limit=200: history)
+
+    scorecard = diagnostics_routes.ml_parity_scorecard(window_size=3)
+
+    assert scorecard.report_available is True
+    assert scorecard.training_mode is False
+    assert scorecard.effective_mode == "ml"
+    assert scorecard.sample_size == 3
+    assert scorecard.rolling_mae_vs_deterministic == 2.0
+    assert scorecard.rolling_p95_abs_vs_deterministic == 6.0
+    assert scorecard.rolling_max_abs_vs_deterministic == 9.0
+    assert scorecard.confidence_percent > 0.0
+    assert scorecard.confidence_label in {"medium", "high"}

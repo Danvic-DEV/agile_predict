@@ -5,9 +5,11 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, HTTPException
 
 from src.api.v1.deps import UnitOfWorkDep
+from src.api.errors import http_error
 from src.core.regions import normalize_region
 from src.domain.bootstrap_bundle import BootstrapBundleConfig, write_bootstrap_bundle
 from src.jobs.pipelines.update_forecast import run_update_forecast_job
+from src.repositories.types import AgileDataWrite
 from src.schemas.admin_jobs import (
     BootstrapForecastBundleRequest,
     BootstrapForecastBundleResponse,
@@ -70,7 +72,7 @@ def bootstrap_forecast(
 
     except Exception as exc:
         uow.rollback()
-        raise HTTPException(status_code=400, detail=f"bootstrap forecast failed: {exc}") from exc
+        raise http_error(400, "bootstrap_forecast_failed", "Bootstrap forecast failed.", exc) from exc
 
     return BootstrapForecastResponse(
         forecast_name=forecast.name,
@@ -112,7 +114,7 @@ def bootstrap_forecast_bundle(
 
     except Exception as exc:
         uow.rollback()
-        raise HTTPException(status_code=400, detail=f"bootstrap forecast bundle failed: {exc}") from exc
+        raise http_error(400, "bootstrap_forecast_bundle_failed", "Bootstrap forecast bundle failed.", exc) from exc
 
     return BootstrapForecastBundleResponse(
         forecast_name=result.forecast_name,
@@ -132,7 +134,7 @@ def run_update_job(uow: UnitOfWorkDep) -> RunUpdateJobResponse:
         uow.commit()
     except Exception as exc:
         uow.rollback()
-        raise HTTPException(status_code=400, detail=f"update forecast job failed: {exc}") from exc
+        raise http_error(400, "update_forecast_job_failed", "Update forecast job failed.", exc) from exc
 
     return RunUpdateJobResponse(
         forecast_name=result.forecast_name,

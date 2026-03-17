@@ -61,6 +61,10 @@ class BootstrapBundleConfig:
     day_ahead_base: float = 80.0
     day_ahead_step: float = 0.35
     day_ahead_values: tuple[float, ...] | None = None
+    day_ahead_low_values: tuple[float, ...] | None = None
+    day_ahead_high_values: tuple[float, ...] | None = None
+    forecast_mean: float | None = None
+    forecast_stdev: float | None = None
 
     bm_wind_base: float = 5000.0
     solar_base: float = 1500.0
@@ -108,11 +112,16 @@ def write_bootstrap_bundle(uow: BootstrapBundleUoW, config: BootstrapBundleConfi
         forecast = uow.forecast_writes.create_forecast(
             name=forecast_name,
             created_at=now,
-            mean=None,
-            stdev=None,
+            mean=config.forecast_mean,
+            stdev=config.forecast_stdev,
         )
     else:
         idempotent_hit = True
+        # Update persisted diagnostics fields even when reusing an idempotent forecast row.
+        if config.forecast_mean is not None:
+            forecast.mean = config.forecast_mean
+        if config.forecast_stdev is not None:
+            forecast.stdev = config.forecast_stdev
         if config.replace_existing:
             uow.forecast_data_writes.delete_for_forecast(forecast.id)
             uow.agile_data_writes.delete_for_forecast(forecast.id)
@@ -120,6 +129,8 @@ def write_bootstrap_bundle(uow: BootstrapBundleUoW, config: BootstrapBundleConfi
     anchor_time = forecast.created_at if config.idempotency_key else now
 
     day_ahead_values = tuple(float(v) for v in config.day_ahead_values) if config.day_ahead_values else None
+    day_ahead_low_values = tuple(float(v) for v in config.day_ahead_low_values) if config.day_ahead_low_values else None
+    day_ahead_high_values = tuple(float(v) for v in config.day_ahead_high_values) if config.day_ahead_high_values else None
     points = len(day_ahead_values) if day_ahead_values is not None else config.points
 
     forecast_data_rows: list[ForecastDataWrite] = []
@@ -127,6 +138,8 @@ def write_bootstrap_bundle(uow: BootstrapBundleUoW, config: BootstrapBundleConfi
     for i in range(points):
         dt = anchor_time + timedelta(minutes=30 * i)
         day_ahead = day_ahead_values[i] if day_ahead_values is not None else config.day_ahead_base + config.day_ahead_step * (i % 16)
+        day_ahead_low = day_ahead_low_values[i] if day_ahead_low_values is not None else None
+        day_ahead_high = day_ahead_high_values[i] if day_ahead_high_values is not None else None
 
         forecast_data_rows.append(
             ForecastDataWrite(
@@ -146,13 +159,22 @@ def write_bootstrap_bundle(uow: BootstrapBundleUoW, config: BootstrapBundleConfi
         if config.write_agile_data:
             for region in regions:
                 pred = _day_ahead_to_agile(day_ahead, dt, region)
+                if (day_ahead_low is not None) and (day_ahead_high is not None):
+                    low = _day_ahead_to_agile(day_ahead_low, dt, region)
+                    high = _day_ahead_to_agile(day_ahead_high, dt, region)
+                    agile_low = min(low, pred, high)
+                    agile_high = max(low, pred, high)
+                else:
+                    agile_low = pred - config.agile_spread
+                    agile_high = pred + config.agile_spread
+
                 agile_rows.append(
                     AgileDataWrite(
                         forecast_id=forecast.id,
                         region=region,
                         agile_pred=round(pred, 4),
-                        agile_low=round(pred - config.agile_spread, 4),
-                        agile_high=round(pred + config.agile_spread, 4),
+                        agile_low=round(agile_low, 4),
+                        agile_high=round(agile_high, 4),
                         date_time=dt,
                     )
                 )

@@ -45,3 +45,58 @@ python manage.py runserver
 ```
 
 Have fun!
+
+---
+
+## Migration Scaffolding (Standard Stack)
+
+Migration scaffolding has been added on the dedicated migration branch for:
+
+- FastAPI backend under `backend/`
+- React + Vite frontend under `frontend/`
+- Single-container packaging under `deploy/` and `.github/workflows/`
+
+Current runtime contract for the new app container:
+
+- Persistent configuration directory mounted at `/config`
+- First run creates `/config/.env` from `deploy/docker/default.env`
+- Embedded Postgres data persists under `/config/postgresql`
+- FastAPI serves both the API and the built React frontend
+
+Preferred local stack startup:
+
+```bash
+./bin/start_local_stack.sh
+```
+
+This starts the single app container, initializes embedded Postgres, and auto-seeds the migration database on first run.
+
+Containerized backend tests:
+
+```bash
+./bin/test_backend.sh
+```
+
+This is the default migration-stack test path and avoids host Python environment drift.
+
+Containerized parity gate:
+
+```bash
+LEGACY_BASE=http://localhost:8000 MIGRATED_BASE=http://localhost:8010 ./bin/parity_gate.sh
+```
+
+Each run updates `shared/parity/last-report.json` and writes a timestamped archive in `shared/parity/history/`.
+
+Parity history can be queried from the migration API with optional filters, for example:
+
+```bash
+curl "http://localhost:8000/api/v1/diagnostics/parity-history?limit=5&status=fail"
+```
+
+Pagination is supported with `offset`, for example:
+
+```bash
+curl "http://localhost:8000/api/v1/diagnostics/parity-history?limit=5&offset=5"
+```
+
+See `docs/implementation-roadmap.md` for startup examples.

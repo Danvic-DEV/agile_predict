@@ -7,16 +7,22 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from src.api.v1.router import api_router
-from src.core.runtime import initialize_runtime
+from src.core.runtime import AutoUpdateScheduler, initialize_runtime
 from src.core.settings import settings
 
 FRONTEND_DIST_DIR = Path("/app/frontend-dist")
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI):
+async def lifespan(app: FastAPI):
     initialize_runtime()
-    yield
+    scheduler = AutoUpdateScheduler()
+    await scheduler.start()
+    app.state.auto_update_scheduler = scheduler
+    try:
+        yield
+    finally:
+        await scheduler.stop()
 
 
 def create_app() -> FastAPI:

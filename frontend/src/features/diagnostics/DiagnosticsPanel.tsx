@@ -4,10 +4,16 @@ import {
   fetchLatestDiagnostics,
   fetchParityHistory,
   fetchLatestParitySummary,
+  fetchMlParityScorecard,
   runBootstrapForecastBundle,
   runUpdateForecastJob,
 } from "./api";
-import type { LatestForecastDiagnostics, LatestParitySummary, ParityHistoryItem } from "../../lib/api/types";
+import type {
+  LatestForecastDiagnostics,
+  LatestParitySummary,
+  MlParityScorecard,
+  ParityHistoryItem,
+} from "../../lib/api/types";
 
 const HISTORY_PAGE_SIZE = 5;
 
@@ -65,6 +71,7 @@ export function DiagnosticsPanel() {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [data, setData] = useState<LatestForecastDiagnostics | null>(null);
   const [parity, setParity] = useState<LatestParitySummary | null>(null);
+  const [scorecard, setScorecard] = useState<MlParityScorecard | null>(null);
   const [parityHistory, setParityHistory] = useState<ParityHistoryItem[]>([]);
   const [error, setError] = useState("");
   const [parityError, setParityError] = useState("");
@@ -102,8 +109,9 @@ export function DiagnosticsPanel() {
 
   async function refreshParity() {
     try {
-      const [result, history] = await Promise.all([
+      const [result, scorecardResult, parityHistoryResult] = await Promise.all([
         fetchLatestParitySummary(),
+        fetchMlParityScorecard(30),
         fetchParityHistory({
           limit: HISTORY_PAGE_SIZE,
           offset: historyOffset,
@@ -112,8 +120,9 @@ export function DiagnosticsPanel() {
         }),
       ]);
       setParity(result);
-      setParityHistory(history.items);
-      setHistoryTotal(history.total);
+      setScorecard(scorecardResult);
+      setParityHistory(parityHistoryResult.items);
+      setHistoryTotal(parityHistoryResult.total);
       setParityError("");
     } catch (err) {
       setParityError(err instanceof Error ? err.message : "Failed loading parity summary");
@@ -137,8 +146,9 @@ export function DiagnosticsPanel() {
         setError("");
 
         try {
-          const [parityResult, parityHistoryResult] = await Promise.all([
+          const [parityResult, scorecardResult, parityHistoryResult] = await Promise.all([
             fetchLatestParitySummary(),
+            fetchMlParityScorecard(30),
             fetchParityHistory({
               limit: HISTORY_PAGE_SIZE,
               offset: historyOffset,
@@ -150,6 +160,7 @@ export function DiagnosticsPanel() {
             return;
           }
           setParity(parityResult);
+          setScorecard(scorecardResult);
           setParityHistory(parityHistoryResult.items);
           setHistoryTotal(parityHistoryResult.total);
           setParityError("");
@@ -384,6 +395,53 @@ export function DiagnosticsPanel() {
       )}
       {parity && (
         <>
+          {scorecard && (
+            <div className="parity-detail-card">
+              <h3>ML Parity Scorecard</h3>
+              <div className="scorecard-header-row">
+                <span className={`scorecard-confidence ${scorecard.confidence_label}`}>
+                  {scorecard.confidence_label.toUpperCase()} confidence
+                </span>
+                <strong>{scorecard.confidence_percent.toFixed(2)}%</strong>
+              </div>
+              <div className="metric-grid" style={{ marginTop: 10 }}>
+                <div>
+                  <span className="label">Effective Mode</span>
+                  <strong>{scorecard.effective_mode}</strong>
+                </div>
+                <div>
+                  <span className="label">Configured Mode</span>
+                  <strong>{scorecard.configured_write_mode ?? "n/a"}</strong>
+                </div>
+                <div>
+                  <span className="label">Training Mode</span>
+                  <strong>{scorecard.training_mode ? "yes" : "no"}</strong>
+                </div>
+                <div>
+                  <span className="label">Sample Size</span>
+                  <strong>
+                    {scorecard.sample_size} / {scorecard.window_size}
+                  </strong>
+                </div>
+                <div>
+                  <span className="label">Rolling MAE</span>
+                  <strong>{scorecard.rolling_mae_vs_deterministic ?? "n/a"}</strong>
+                </div>
+                <div>
+                  <span className="label">Rolling P95 Abs</span>
+                  <strong>{scorecard.rolling_p95_abs_vs_deterministic ?? "n/a"}</strong>
+                </div>
+                <div>
+                  <span className="label">Rolling Max Abs</span>
+                  <strong>{scorecard.rolling_max_abs_vs_deterministic ?? "n/a"}</strong>
+                </div>
+                <div>
+                  <span className="label">Latest Error</span>
+                  <strong>{scorecard.latest_error ?? "none"}</strong>
+                </div>
+              </div>
+            </div>
+          )}
           <div className="metric-grid" style={{ marginTop: 12 }}>
             <div>
               <span className="label">Parity Report</span>

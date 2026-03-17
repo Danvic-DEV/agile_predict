@@ -7,9 +7,11 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException
 
 from src.api.v1.deps import UnitOfWorkDep
-from src.core.update_job_state import read_last_update_job_state
+from src.api.errors import http_error
+from src.core.update_job_state import read_last_update_job_state, read_update_job_history
 from src.schemas.diagnostics import (
     LatestForecastDiagnostics,
+    MlParityScorecard,
     LatestParitySummary,
     ParityHistoryItem,
     ParityHistoryResponse,
@@ -99,7 +101,7 @@ def _parse_report(path: Path) -> LatestParitySummary | None:
 def latest_summary(uow: UnitOfWorkDep) -> LatestForecastDiagnostics:
     latest = uow.forecasts.list_latest(limit=1)
     if not latest:
-        raise HTTPException(status_code=404, detail="No forecasts found")
+        raise http_error(404, "no_forecasts_found", "No forecasts found.")
 
     forecast = latest[0]
     agile_all = uow.agile_data.list_for_forecast(forecast.id)
@@ -135,6 +137,83 @@ def latest_summary(uow: UnitOfWorkDep) -> LatestForecastDiagnostics:
         update_aligned_points=update_state.get("aligned_points"),
         update_interpolated_points=update_state.get("interpolated_points"),
         update_retries_used=update_state.get("retries_used"),
+        update_ml_error=update_state.get("ml_error"),
+        update_ml_training_rows=update_state.get("ml_training_rows"),
+        update_ml_test_rows=update_state.get("ml_test_rows"),
+        update_ml_cv_mean_rmse=update_state.get("ml_cv_mean_rmse"),
+        update_ml_cv_stdev_rmse=update_state.get("ml_cv_stdev_rmse"),
+        update_ml_feature_version=update_state.get("ml_feature_version"),
+        update_ml_range_mode=update_state.get("ml_range_mode"),
+        update_ml_candidate_points=update_state.get("ml_candidate_points"),
+        update_ml_compare_mae=update_state.get("ml_compare_mae"),
+        update_ml_compare_max_abs=update_state.get("ml_compare_max_abs"),
+        update_ml_compare_p95_abs=update_state.get("ml_compare_p95_abs"),
+        update_ml_write_mode=update_state.get("ml_write_mode"),
+        training_mode=update_state.get("training_mode", False),
+    )
+
+
+@router.get("/ml-parity-scorecard", response_model=MlParityScorecard)
+def ml_parity_scorecard(window_size: int = 30) -> MlParityScorecard:
+    bounded_window = min(max(window_size, 5), 500)
+    update_state = read_last_update_job_state() or {}
+    history = read_update_job_history(limit=max(bounded_window * 4, bounded_window))
+
+    comparable_runs = [
+        row
+        for row in history
+        if isinstance(row.get("ml_compare_mae"), (int, float))
+        and isinstance(row.get("ml_compare_p95_abs"), (int, float))
+        and isinstance(row.get("ml_compare_max_abs"), (int, float))
+    ]
+    windowed = comparable_runs[-bounded_window:]
+
+    if windowed:
+        maes = [float(row["ml_compare_mae"]) for row in windowed]
+        p95s = [float(row["ml_compare_p95_abs"]) for row in windowed]
+        maxes = [float(row["ml_compare_max_abs"]) for row in windowed]
+        rolling_mae = round(sum(maes) / len(maes), 6)
+        rolling_p95 = round(sum(p95s) / len(p95s), 6)
+        rolling_max = round(sum(maxes) / len(maxes), 6)
+    else:
+        rolling_mae = None
+        rolling_p95 = None
+        rolling_max = None
+
+    target_mae = 8.0
+    target_p95 = 20.0
+    if rolling_mae is None or rolling_p95 is None:
+        confidence = 0.0
+    else:
+        mae_score = max(0.0, min(1.0, 1.0 - (rolling_mae / target_mae)))
+        p95_score = max(0.0, min(1.0, 1.0 - (rolling_p95 / target_p95)))
+        coverage = min(1.0, len(windowed) / float(bounded_window))
+        confidence = round((0.45 * mae_score + 0.45 * p95_score + 0.10 * coverage) * 100.0, 2)
+
+    training_mode = bool(update_state.get("training_mode", True))
+    configured_mode = update_state.get("ml_write_mode")
+    effective_mode = "training" if training_mode else ("ml" if configured_mode == "ml" else "shadow")
+
+    if confidence >= 80.0:
+        label = "high"
+    elif confidence >= 50.0:
+        label = "medium"
+    else:
+        label = "low"
+
+    return MlParityScorecard(
+        report_available=len(windowed) > 0,
+        training_mode=training_mode,
+        configured_write_mode=configured_mode,
+        effective_mode=effective_mode,
+        sample_size=len(windowed),
+        window_size=bounded_window,
+        rolling_mae_vs_deterministic=rolling_mae,
+        rolling_p95_abs_vs_deterministic=rolling_p95,
+        rolling_max_abs_vs_deterministic=rolling_max,
+        confidence_percent=confidence,
+        confidence_label=label,
+        latest_error=update_state.get("ml_error"),
     )
 
 
@@ -177,7 +256,7 @@ def parity_history(
         since_dt = _parse_iso_datetime(since)
         until_dt = _parse_iso_datetime(until)
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=f"Invalid ISO datetime filter: {exc}") from exc
+        raise http_error(422, "invalid_iso_datetime_filter", "Invalid ISO datetime filter.", exc) from exc
 
     if PARITY_HISTORY_DIR.exists():
         report_paths = sorted(
