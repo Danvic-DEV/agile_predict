@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">Agile Predict Favicon</title>
+  <desc id="desc">Rounded square badge with AP monogram and forecast line motif.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#1e3a44"/>
+      <stop offset="100%" stop-color="#0b1118"/>
+    </linearGradient>
+    <linearGradient id="line" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0%" stop-color="#f2b84b"/>
+      <stop offset="100%" stop-color="#79c8ff"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="url(#bg)" stroke="#f2b84b" stroke-opacity="0.45"/>
+  <path d="M11 43 L20 35 L27 38 L35 26 L43 30 L53 20" fill="none" stroke="url(#line)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="53" cy="20" r="3" fill="#79c8ff"/>
+  <path d="M16 50 L22 16 H29 L34 36 L39 16 H46 L39 50 H32 L26 30 L21 50 Z" fill="#f4f1e8" fill-opacity="0.95"/>
+</svg>
