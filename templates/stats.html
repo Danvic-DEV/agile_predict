@@ -3,6 +3,116 @@
 <div class="container-lg fluid">
     <div class="row">
         <div class="col-lg p-4">
+            <h4 class="mb-3">Data Growth and ML Readiness</h4>
+            <p class="text-muted mb-3">
+                Live checks for whether data is accumulating and whether minimum training gates are satisfied.
+            </p>
+
+            {% if growth %}
+            <div class="row g-3 mb-4">
+                <div class="col-md-4">
+                    <div class="card border-info-subtle h-100">
+                        <div class="card-body">
+                            <h6 class="card-title">Forecast Runs</h6>
+                            <div class="display-6">{{ growth.counts.forecasts }}</div>
+                            <div class="text-muted">+{{ growth.growth_24h.forecasts }} in last 24h</div>
+                            <div class="small text-muted mt-2">Latest: {{ growth.latest.forecast|date:"Y-m-d H:i"|default:"-" }}</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card border-info-subtle h-100">
+                        <div class="card-body">
+                            <h6 class="card-title">Feature Rows</h6>
+                            <div class="display-6">{{ growth.counts.forecast_data }}</div>
+                            <div class="text-muted">+{{ growth.growth_24h.forecast_data }} in last 24h</div>
+                            <div class="small text-muted mt-2">Latest: {{ growth.latest.forecast_data|date:"Y-m-d H:i"|default:"-" }}</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card border-info-subtle h-100">
+                        <div class="card-body">
+                            <h6 class="card-title">Price Rows</h6>
+                            <div class="display-6">{{ growth.counts.price_history }}</div>
+                            <div class="text-muted">+{{ growth.growth_24h.price_history }} in last 24h</div>
+                            <div class="small text-muted mt-2">Latest: {{ growth.latest.price_history|date:"Y-m-d H:i"|default:"-" }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mb-5 {% if growth.readiness_ok %}border-success{% else %}border-warning{% endif %}">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">Readiness Gate</h5>
+                    <p class="mb-3">
+                        {% if growth.readiness_ok %}
+                        <span class="badge text-bg-success">READY</span>
+                        Minimum sample gates have been met.
+                        {% else %}
+                        <span class="badge text-bg-warning">WARMING UP</span>
+                        Still collecting data to hit minimum gates.
+                        {% endif %}
+                    </p>
+
+                    {% for gate in growth.readiness_rows %}
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between">
+                            <span class="fw-semibold">{{ gate.label }}</span>
+                            <span>{{ gate.current }} / {{ gate.target }}</span>
+                        </div>
+                        <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="{{ gate.target }}" aria-valuenow="{{ gate.current }}">
+                            <div
+                                class="progress-bar {% if gate.state == 'ready' %}bg-success{% elif gate.state == 'growing' %}bg-warning text-dark{% else %}bg-secondary{% endif %}"
+                                style="width: {{ gate.pct }}%;"
+                            ></div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                    <div class="small text-muted">Joined rows is a proxy: min(feature_rows, price_rows).</div>
+                </div>
+            </div>
+
+            <div class="card mb-4 {% if growth.freshness_ok %}border-success{% else %}border-danger{% endif %}">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">Freshness Monitor</h5>
+                    <p class="text-muted mb-3">Warns when any feed has not updated recently.</p>
+                    <div class="row g-2">
+                        {% for feed in growth.freshness_rows %}
+                        <div class="col-md-3 col-6">
+                            <div class="border rounded p-2 h-100">
+                                <div class="small text-muted">{{ feed.label }}</div>
+                                <div>
+                                    <span class="badge {% if feed.state == 'fresh' %}text-bg-success{% elif feed.state == 'warn' %}text-bg-warning{% elif feed.state == 'stale' %}text-bg-danger{% else %}text-bg-secondary{% endif %}">
+                                        {{ feed.label }}
+                                    </span>
+                                </div>
+                                <div class="small mt-1">
+                                    {% if feed.age_minutes is None %}
+                                    no data yet
+                                    {% else %}
+                                    {{ feed.age_minutes }} min old
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <div class="small text-muted mt-2">Fresh: <= 90m, Aging: 91-180m, Stale: > 180m.</div>
+                </div>
+            </div>
+
+            <div class="card mb-5 border-info-subtle">
+                <div class="card-body">
+                    <h5 class="card-title mb-2">7-Day Ingestion Trend</h5>
+                    <p class="text-muted mb-3">Daily row growth by dataset, to quickly spot stalled pipelines.</p>
+                    {% if growth.trend_plot %}
+                    {{ growth.trend_plot|safe }}
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+
             <h4 class="mb-4">Model RMS Error and Robustness vs Forecast Date</h4>
             <p class="text-muted">
                 This plot shows how the model fit to the training data and its robustness evolve over time as more

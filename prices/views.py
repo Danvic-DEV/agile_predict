@@ -3,6 +3,9 @@ from pathlib import Path
 import pandas as pd
 import plotly.graph_objects as go
 from django.core.cache import cache
+from django.db.models import Count, Max
+from django.db.models.functions import TruncDate
+from django.utils import timezone
 
 # Create your views here.
 from django.views.generic import FormView, TemplateView
@@ -41,8 +44,181 @@ class HomeAssistantView(TemplateView):
 class StatsView(TemplateView):
     template_name = "stats.html"
 
+    @staticmethod
+    def _latest(model, field: str = "date_time"):
+        return model.objects.aggregate(latest=Max(field))["latest"]
+
+    @staticmethod
+    def _readiness_state(current: int, target: int) -> str:
+        if current >= target:
+            return "ready"
+        if current >= max(1, int(target * 0.5)):
+            return "growing"
+        return "cold"
+
+    @staticmethod
+    def _daily_counts(model, ts_field: str, now, days: int = 7) -> list[int]:
+        start = (now - pd.Timedelta(days=days - 1)).date()
+        end = now.date()
+        day_index = pd.date_range(start=start, end=end, freq="D").date
+
+        rows = (
+            model.objects.filter(**{f"{ts_field}__date__gte": start})
+            .annotate(day=TruncDate(ts_field))
+            .values("day")
+            .annotate(c=Count("id"))
+            .order_by("day")
+        )
+        by_day = {r["day"]: r["c"] for r in rows}
+        return [int(by_day.get(d, 0)) for d in day_index]
+
+    def _build_growth_context(self) -> dict:
+        now = timezone.now()
+        day_ago = now - pd.Timedelta("24h")
+
+        counts = {
+            "forecasts": Forecasts.objects.count(),
+            "forecast_data": ForecastData.objects.count(),
+            "agile_data": AgileData.objects.count(),
+            "price_history": PriceHistory.objects.count(),
+            "history": History.objects.count(),
+        }
+
+        growth_24h = {
+            "forecasts": Forecasts.objects.filter(created_at__gte=day_ago).count(),
+            "forecast_data": ForecastData.objects.filter(date_time__gte=day_ago).count(),
+            "agile_data": AgileData.objects.filter(date_time__gte=day_ago).count(),
+            "price_history": PriceHistory.objects.filter(date_time__gte=day_ago).count(),
+            "history": History.objects.filter(date_time__gte=day_ago).count(),
+        }
+
+        latest = {
+            "forecast": self._latest(Forecasts, "created_at"),
+            "forecast_data": self._latest(ForecastData),
+            "agile_data": self._latest(AgileData),
+            "price_history": self._latest(PriceHistory),
+            "history": self._latest(History),
+        }
+
+        freshness = {}
+        for key, ts in latest.items():
+            if ts is None:
+                freshness[key] = {"age_minutes": None, "state": "missing", "label": "Missing"}
+                continue
+            age_minutes = int((now - ts).total_seconds() // 60)
+            if age_minutes <= 90:
+                state, label = "fresh", "Fresh"
+            elif age_minutes <= 180:
+                state, label = "warn", "Aging"
+            else:
+                state, label = "stale", "Stale"
+            freshness[key] = {"age_minutes": age_minutes, "state": state, "label": label}
+
+        daily_labels = pd.date_range(end=now.date(), periods=7, freq="D").strftime("%d %b").tolist()
+        daily_counts = {
+            "forecasts": self._daily_counts(Forecasts, "created_at", now, days=7),
+            "forecast_data": self._daily_counts(ForecastData, "date_time", now, days=7),
+            "price_history": self._daily_counts(PriceHistory, "date_time", now, days=7),
+            "history": self._daily_counts(History, "date_time", now, days=7),
+        }
+
+        trend_figure = go.Figure()
+        trend_figure.add_trace(
+            go.Scatter(x=daily_labels, y=daily_counts["forecasts"], mode="lines+markers", name="Forecast runs")
+        )
+        trend_figure.add_trace(
+            go.Scatter(x=daily_labels, y=daily_counts["forecast_data"], mode="lines+markers", name="Feature rows")
+        )
+        trend_figure.add_trace(
+            go.Scatter(x=daily_labels, y=daily_counts["price_history"], mode="lines+markers", name="Price rows")
+        )
+        trend_figure.add_trace(
+            go.Scatter(x=daily_labels, y=daily_counts["history"], mode="lines+markers", name="History rows")
+        )
+        trend_figure.update_layout(
+            height=360,
+            margin={"l": 30, "r": 10, "t": 20, "b": 20},
+            template="plotly_dark",
+            plot_bgcolor="#212529",
+            paper_bgcolor="#343a40",
+            legend={"orientation": "h", "y": 1.15, "x": 0},
+            yaxis={"title": "Rows / day"},
+        )
+
+        # Practical readiness checks used by the ML training gate.
+        targets = {
+            "forecasts": 2,
+            "forecast_data": 50,
+            "price_history": 50,
+            "joined_rows_proxy": 30,
+        }
+
+        joined_rows_proxy = min(counts["forecast_data"], counts["price_history"])
+
+        readiness = {
+            "forecasts": {
+                "current": counts["forecasts"],
+                "target": targets["forecasts"],
+                "state": self._readiness_state(counts["forecasts"], targets["forecasts"]),
+                "pct": min(100, int((counts["forecasts"] / targets["forecasts"]) * 100)),
+            },
+            "forecast_data": {
+                "current": counts["forecast_data"],
+                "target": targets["forecast_data"],
+                "state": self._readiness_state(counts["forecast_data"], targets["forecast_data"]),
+                "pct": min(100, int((counts["forecast_data"] / targets["forecast_data"]) * 100)),
+            },
+            "price_history": {
+                "current": counts["price_history"],
+                "target": targets["price_history"],
+                "state": self._readiness_state(counts["price_history"], targets["price_history"]),
+                "pct": min(100, int((counts["price_history"] / targets["price_history"]) * 100)),
+            },
+            "joined_rows_proxy": {
+                "current": joined_rows_proxy,
+                "target": targets["joined_rows_proxy"],
+                "state": self._readiness_state(joined_rows_proxy, targets["joined_rows_proxy"]),
+                "pct": min(100, int((joined_rows_proxy / targets["joined_rows_proxy"]) * 100)),
+            },
+        }
+
+        readiness_ok = all(v["current"] >= v["target"] for v in readiness.values())
+        freshness_ok = all(v["state"] == "fresh" for v in freshness.values() if v["state"] != "missing")
+        readiness_rows = [
+            {"label": "Forecast runs", **readiness["forecasts"]},
+            {"label": "Feature rows", **readiness["forecast_data"]},
+            {"label": "Price rows", **readiness["price_history"]},
+            {"label": "Joined rows (proxy)", **readiness["joined_rows_proxy"]},
+        ]
+
+        freshness_rows = [
+            {"label": "Forecast runs", **freshness["forecast"]},
+            {"label": "Feature rows", **freshness["forecast_data"]},
+            {"label": "Price rows", **freshness["price_history"]},
+            {"label": "History rows", **freshness["history"]},
+        ]
+
+        return {
+            "counts": counts,
+            "growth_24h": growth_24h,
+            "latest": latest,
+            "readiness": readiness,
+            "readiness_rows": readiness_rows,
+            "readiness_ok": readiness_ok,
+            "freshness_rows": freshness_rows,
+            "freshness_ok": freshness_ok,
+            "trend_plot": trend_figure.to_html(full_html=False, include_plotlyjs=False),
+        }
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        context["growth"] = self._build_growth_context()
+
+        # If there is no historical price data yet, render growth/readiness cards only.
+        if not PriceHistory.objects.exists():
+            context["stats"] = None
+            context["plot_files"] = []
+            return context
 
         agile_actuals_end = pd.Timestamp(PriceHistory.objects.all().order_by("-date_time")[0].date_time)
         agile_actuals_start = agile_actuals_end - pd.Timedelta("7D")
