@@ -117,3 +117,14 @@ class IngestPipelineHealth(BaseModel):
     expected_source_count: int
     stages: list[PipelineStageStatus]
     sources: list[SourceCollectionStatus]
+
+
+class ExternalSystemContextHealth(BaseModel):
+    generated_at: str
+    total_rows: int
+    rows_24h: int
+    latest_date_time: str | None
+    carbon_intensity_rows: int
+    fuel_mix_rows: int
+    interconnector_rows: int
+    pumped_storage_rows: int

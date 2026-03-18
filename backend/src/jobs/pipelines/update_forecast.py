@@ -15,6 +15,7 @@ from src.domain.bootstrap_bundle import (
 from src.domain.forecast_pipeline import ForecastRunResult, run_forecast_pipeline
 from src.ml.ingest.grid_weather import fetch_grid_weather_features
 from src.ml.ingest.nordpool import fetch_day_ahead_prices
+from src.ml.ingest.system_context import fetch_system_context_features
 from src.ml.parity.day_ahead_xgb import check_ml_training_readiness, run_ml_day_ahead_forecast
 from src.repositories.unit_of_work import UnitOfWork
 
@@ -212,6 +213,35 @@ def run_update_forecast_job(uow: UnitOfWork) -> ForecastRunResult:
             log.info("Upserted %s Nordpool price rows into PriceHistoryORM", price_upsert_count)
     except Exception as exc:  # noqa: BLE001
         log.warning("Nordpool price upsert failed (non-fatal): %s", exc)
+
+    # ------------------------------------------------------------------
+    # Step 3b: ingest additional system-context feeds for future Wave A
+    # ML improvements (carbon intensity, fuel mix/interconnectors).
+    # This is non-fatal and currently used for diagnostics + future training.
+    # ------------------------------------------------------------------
+    external_context_upsert_count = 0
+    try:
+        context_df = fetch_system_context_features(lookback_days=3)
+        if not context_df.empty:
+            context_rows = []
+            for ts, row in context_df.iterrows():
+                ts_utc = pd.Timestamp(ts).tz_convert("UTC") if getattr(ts, "tzinfo", None) else pd.Timestamp(ts, tz="UTC")
+                context_rows.append(
+                    {
+                        "date_time": ts_utc.to_pydatetime(),
+                        "carbon_intensity": float(row["carbon_intensity"]),
+                        "gas_mw": float(row["gas_mw"]),
+                        "wind_mw": float(row["wind_mw"]),
+                        "nuclear_mw": float(row["nuclear_mw"]),
+                        "pumped_storage_mw": float(row["pumped_storage_mw"]),
+                        "interconnector_net_mw": float(row["interconnector_net_mw"]),
+                    }
+                )
+
+            external_context_upsert_count = uow.external_system_context_writes.upsert_many(context_rows)
+            log.info("Upserted %s external system context rows", external_context_upsert_count)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("External system context ingest failed (non-fatal): %s", exc)
 
     # ------------------------------------------------------------------
     # Step 4: prune history forecasts older than 65 days.

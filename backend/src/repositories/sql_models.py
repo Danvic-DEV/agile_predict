@@ -67,3 +67,16 @@ class ForecastDataORM(Base):
     wind_10m: Mapped[float] = mapped_column(Float, nullable=False)
     rad: Mapped[float] = mapped_column(Float, nullable=False)
     demand: Mapped[float] = mapped_column(Float, nullable=False)
+
+
+class ExternalSystemContextORM(Base):
+    __tablename__ = "backend_external_system_context"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    date_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, unique=True)
+    carbon_intensity: Mapped[float | None] = mapped_column(Float, nullable=True)
+    gas_mw: Mapped[float | None] = mapped_column(Float, nullable=True)
+    wind_mw: Mapped[float | None] = mapped_column(Float, nullable=True)
+    nuclear_mw: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pumped_storage_mw: Mapped[float | None] = mapped_column(Float, nullable=True)
+    interconnector_net_mw: Mapped[float | None] = mapped_column(Float, nullable=True)

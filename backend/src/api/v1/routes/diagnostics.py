@@ -10,8 +10,9 @@ from sqlalchemy import func, select
 from src.api.v1.deps import UnitOfWorkDep
 from src.api.errors import http_error
 from src.core.update_job_state import read_last_update_job_state, read_update_job_history
-from src.repositories.sql_models import ForecastDataORM, ForecastORM, PriceHistoryORM
+from src.repositories.sql_models import ExternalSystemContextORM, ForecastDataORM, ForecastORM, PriceHistoryORM
 from src.schemas.diagnostics import (
+    ExternalSystemContextHealth,
     IngestPipelineHealth,
     LatestForecastDiagnostics,
     LatestParitySummary,
@@ -381,6 +382,67 @@ def ingest_pipeline_health(uow: UnitOfWorkDep) -> IngestPipelineHealth:
         expected_source_count=len(sources),
         stages=stages,
         sources=sources,
+    )
+
+
+@router.get("/external-system-context-health", response_model=ExternalSystemContextHealth)
+def external_system_context_health(uow: UnitOfWorkDep) -> ExternalSystemContextHealth:
+    now = datetime.now(timezone.utc)
+    since_24h = now - timedelta(hours=24)
+
+    total_rows = uow.session.execute(select(func.count(ExternalSystemContextORM.id))).scalar_one() or 0
+    rows_24h = (
+        uow.session.execute(
+            select(func.count(ExternalSystemContextORM.id)).where(ExternalSystemContextORM.date_time >= since_24h)
+        ).scalar_one()
+        or 0
+    )
+    latest_date_time = uow.session.execute(select(func.max(ExternalSystemContextORM.date_time))).scalar_one_or_none()
+
+    carbon_rows = (
+        uow.session.execute(
+            select(func.count(ExternalSystemContextORM.id)).where(
+                ExternalSystemContextORM.carbon_intensity.is_not(None)
+            )
+        ).scalar_one()
+        or 0
+    )
+    fuel_rows = (
+        uow.session.execute(
+            select(func.count(ExternalSystemContextORM.id)).where(
+                ExternalSystemContextORM.gas_mw.is_not(None),
+                ExternalSystemContextORM.wind_mw.is_not(None),
+                ExternalSystemContextORM.nuclear_mw.is_not(None),
+            )
+        ).scalar_one()
+        or 0
+    )
+    interconnector_rows = (
+        uow.session.execute(
+            select(func.count(ExternalSystemContextORM.id)).where(
+                ExternalSystemContextORM.interconnector_net_mw.is_not(None)
+            )
+        ).scalar_one()
+        or 0
+    )
+    pumped_rows = (
+        uow.session.execute(
+            select(func.count(ExternalSystemContextORM.id)).where(
+                ExternalSystemContextORM.pumped_storage_mw.is_not(None)
+            )
+        ).scalar_one()
+        or 0
+    )
+
+    return ExternalSystemContextHealth(
+        generated_at=now.isoformat(),
+        total_rows=int(total_rows),
+        rows_24h=int(rows_24h),
+        latest_date_time=latest_date_time.isoformat() if latest_date_time else None,
+        carbon_intensity_rows=int(carbon_rows),
+        fuel_mix_rows=int(fuel_rows),
+        interconnector_rows=int(interconnector_rows),
+        pumped_storage_rows=int(pumped_rows),
     )
 
 
