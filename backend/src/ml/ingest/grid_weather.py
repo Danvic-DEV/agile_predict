@@ -241,9 +241,15 @@ def fetch_grid_weather_features(
     remaining sources are used.
     """
     ref = now or datetime.now(timezone.utc)
-    start_ts = pd.Timestamp(ref, tz="UTC") - pd.Timedelta(days=lookback_days)
+    # pd.Timestamp(ref, tz=...) raises if ref already carries tzinfo — normalise safely
+    ref_ts = pd.Timestamp(ref)
+    if ref_ts.tzinfo is None:
+        ref_ts = ref_ts.tz_localize("UTC")
+    else:
+        ref_ts = ref_ts.tz_convert("UTC")
+    start_ts = ref_ts - pd.Timedelta(days=lookback_days)
     start_date = start_ts.strftime("%Y-%m-%d")
-    end_date = pd.Timestamp(ref, tz="UTC").normalize().strftime("%Y-%m-%d")
+    end_date = ref_ts.normalize().strftime("%Y-%m-%d")
 
     log.info("Fetching grid+weather features from %s to %s", start_date, end_date)
 
