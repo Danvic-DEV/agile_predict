@@ -369,3 +369,134 @@ body {
   letter-spacing: 0.03em;
 }
 
+.growth-visibility-card {
+  margin-top: 12px;
+  border: 1px solid rgba(201, 214, 220, 0.22);
+  border-radius: 10px;
+  padding: 12px;
+  background: rgba(17, 26, 35, 0.45);
+}
+
+.growth-badge {
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.growth-badge.ready {
+  color: #b9f0c5;
+  border: 1px solid rgba(185, 240, 197, 0.45);
+  background: rgba(20, 90, 45, 0.35);
+}
+
+.growth-badge.warming {
+  color: #f2d597;
+  border: 1px solid rgba(242, 213, 151, 0.45);
+  background: rgba(95, 70, 20, 0.35);
+}
+
+.progress-stack {
+  display: grid;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.progress-label-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.84rem;
+  color: #c9d6dc;
+  margin-bottom: 4px;
+}
+
+.progress-track {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(201, 214, 220, 0.18);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #f2b84b, #72c4ff);
+  border-radius: 999px;
+}
+
+.freshness-grid {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+.freshness-item {
+  border: 1px solid rgba(201, 214, 220, 0.16);
+  border-radius: 10px;
+  padding: 10px;
+  background: rgba(10, 20, 30, 0.5);
+}
+
+.freshness-pill {
+  margin-top: 8px;
+  display: inline-block;
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.freshness-pill.fresh {
+  color: #b9f0c5;
+  border: 1px solid rgba(185, 240, 197, 0.45);
+  background: rgba(20, 90, 45, 0.35);
+}
+
+.freshness-pill.aging {
+  color: #f2d597;
+  border: 1px solid rgba(242, 213, 151, 0.45);
+  background: rgba(95, 70, 20, 0.35);
+}
+
+.freshness-pill.stale,
+.freshness-pill.missing {
+  color: #ffb0b0;
+  border: 1px solid rgba(255, 176, 176, 0.45);
+  background: rgba(120, 30, 30, 0.35);
+}
+
+.growth-trend-card {
+  margin-top: 12px;
+  border: 1px solid rgba(201, 214, 220, 0.16);
+  border-radius: 10px;
+  padding: 10px;
+  background: rgba(10, 20, 30, 0.5);
+}
+
+.growth-sparkline {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 8px;
+  background: rgba(10, 20, 30, 0.7);
+}
+
+.sparkline-primary {
+  fill: none;
+  stroke: #f2b84b;
+  stroke-width: 2.5;
+}
+
+.sparkline-secondary {
+  fill: none;
+  stroke: #72c4ff;
+  stroke-width: 2.5;
+}
+
+.growth-legend {
+  margin: 8px 0 0;
+  color: #9eb2be;
+  font-size: 0.8rem;
+}
+

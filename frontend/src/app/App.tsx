@@ -5,6 +5,13 @@ import { DiagnosticsPanel } from "../features/diagnostics/DiagnosticsPanel";
 import { ForecastDashboard } from "../features/forecast/ForecastDashboard";
 
 export function App() {
+  const homeContent = (
+    <>
+      <ForecastDashboard />
+      <DiagnosticsPanel />
+    </>
+  );
+
   return (
     <BrowserRouter>
       <div className="page">
@@ -16,15 +23,9 @@ export function App() {
 
         <main>
           <Routes>
-            <Route
-              path="/"
-              element={
-                <>
-                  <ForecastDashboard />
-                  <DiagnosticsPanel />
-                </>
-              }
-            />
+            <Route path="/" element={homeContent} />
+            <Route path="/stats" element={homeContent} />
+            <Route path="*" element={homeContent} />
           </Routes>
         </main>
       </div>

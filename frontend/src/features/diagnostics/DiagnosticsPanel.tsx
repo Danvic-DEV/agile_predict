@@ -16,6 +16,13 @@ import type {
 } from "../../lib/api/types";
 
 const HISTORY_PAGE_SIZE = 5;
+const READINESS_TARGET_FEATURE_ROWS = 50;
+
+type GrowthSnapshot = {
+  capturedAtMs: number;
+  sampleSize: number;
+  featureRows: number;
+};
 
 function formatUpdateRelativeTime(value: string | null, nowMs: number): string {
   if (!value) {
@@ -67,6 +74,63 @@ function formatUpdateAbsoluteTime(value: string | null): string {
   }).format(new Date(timestamp));
 }
 
+function minutesSince(value: string | null, nowMs: number): number | null {
+  if (!value) {
+    return null;
+  }
+  const ts = Date.parse(value);
+  if (Number.isNaN(ts)) {
+    return null;
+  }
+  return Math.max(0, Math.floor((nowMs - ts) / 60000));
+}
+
+function freshnessLabel(minutes: number | null): "fresh" | "aging" | "stale" | "missing" {
+  if (minutes === null) {
+    return "missing";
+  }
+  if (minutes <= 90) {
+    return "fresh";
+  }
+  if (minutes <= 180) {
+    return "aging";
+  }
+  return "stale";
+}
+
+function formatFreshness(minutes: number | null): string {
+  if (minutes === null) {
+    return "No data";
+  }
+  return `${minutes} min old`;
+}
+
+function progressPct(current: number, target: number): number {
+  if (target <= 0) {
+    return 0;
+  }
+  return Math.max(0, Math.min(100, Math.round((current / target) * 100)));
+}
+
+function buildSparklinePath(values: number[], width = 360, height = 90, padding = 8): string {
+  if (values.length === 0) {
+    return "";
+  }
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = Math.max(1, max - min);
+  const innerW = width - padding * 2;
+  const innerH = height - padding * 2;
+
+  return values
+    .map((value, index) => {
+      const x = padding + (index / Math.max(values.length - 1, 1)) * innerW;
+      const y = height - padding - ((value - min) / range) * innerH;
+      return `${index === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
+    })
+    .join(" ");
+}
+
 export function DiagnosticsPanel() {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [data, setData] = useState<LatestForecastDiagnostics | null>(null);
@@ -85,6 +149,7 @@ export function DiagnosticsPanel() {
   const [historyWindowHours, setHistoryWindowHours] = useState(168);
   const [historyOffset, setHistoryOffset] = useState(0);
   const [historyTotal, setHistoryTotal] = useState(0);
+  const [growthSnapshots, setGrowthSnapshots] = useState<GrowthSnapshot[]>([]);
 
   const parityStatus = parity?.report_available
     ? parity.all_passed
@@ -198,8 +263,92 @@ export function DiagnosticsPanel() {
     };
   }, []);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      void refreshAll();
+    }, 60000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [historyOffset, historyStatusFilter, historyWindowHours]);
+
+  useEffect(() => {
+    if (!data || !scorecard) {
+      return;
+    }
+
+    setGrowthSnapshots((previous) => {
+      const next: GrowthSnapshot = {
+        capturedAtMs: Date.now(),
+        sampleSize: scorecard.sample_size,
+        featureRows: data.forecast_data_count,
+      };
+
+      const last = previous[previous.length - 1];
+      if (last && last.sampleSize === next.sampleSize && last.featureRows === next.featureRows) {
+        return previous;
+      }
+      return [...previous, next].slice(-24);
+    });
+  }, [data, scorecard]);
+
   const hasPreviousHistoryPage = historyOffset > 0;
   const hasNextHistoryPage = historyOffset + parityHistory.length < historyTotal;
+
+  const sampleTarget = scorecard?.window_size ?? 30;
+  const sampleCurrent = scorecard?.sample_size ?? 0;
+  const featureCurrent = data?.forecast_data_count ?? 0;
+  const updateCurrent = data?.update_records_written && data.update_records_written > 0 ? 1 : 0;
+
+  const readinessRows = [
+    {
+      label: "ML samples",
+      current: sampleCurrent,
+      target: sampleTarget,
+      pct: progressPct(sampleCurrent, sampleTarget),
+    },
+    {
+      label: "Feature rows",
+      current: featureCurrent,
+      target: READINESS_TARGET_FEATURE_ROWS,
+      pct: progressPct(featureCurrent, READINESS_TARGET_FEATURE_ROWS),
+    },
+    {
+      label: "Update output",
+      current: updateCurrent,
+      target: 1,
+      pct: progressPct(updateCurrent, 1),
+    },
+  ];
+
+  const readinessComplete = readinessRows.every((row) => row.current >= row.target);
+
+  const freshnessRows = [
+    {
+      label: "Update run",
+      minutes: minutesSince(data?.update_source_updated_at ?? null, nowMs),
+    },
+    {
+      label: "Latest forecast",
+      minutes: minutesSince(data?.created_at ?? null, nowMs),
+    },
+    {
+      label: "Parity report",
+      minutes: minutesSince(parity?.report_updated_at ?? null, nowMs),
+    },
+  ].map((row) => {
+    const state = freshnessLabel(row.minutes);
+    return {
+      ...row,
+      state,
+      display: formatFreshness(row.minutes),
+    };
+  });
+
+  const samplesPath = buildSparklinePath(growthSnapshots.map((s) => s.sampleSize));
+  const featuresPath = buildSparklinePath(growthSnapshots.map((s) => s.featureRows));
+  const trendHasData = growthSnapshots.length >= 2;
 
   async function handleSeedBundle() {
     setActionState("running");
@@ -336,6 +485,58 @@ export function DiagnosticsPanel() {
       {error && <p>Diagnostics unavailable: {error}</p>}
       {parityError && <p>Parity summary unavailable: {parityError}</p>}
       {!error && !data && <p>Loading diagnostics...</p>}
+      {(data || scorecard) && (
+        <div className="growth-visibility-card">
+          <div className="chart-header">
+            <h3>Data Growth and Readiness</h3>
+            <span className={readinessComplete ? "growth-badge ready" : "growth-badge warming"}>
+              {readinessComplete ? "READY" : "WARMING UP"}
+            </span>
+          </div>
+
+          <div className="progress-stack">
+            {readinessRows.map((row) => (
+              <div key={row.label}>
+                <div className="progress-label-row">
+                  <span>{row.label}</span>
+                  <span>
+                    {row.current} / {row.target}
+                  </span>
+                </div>
+                <div className="progress-track">
+                  <div className="progress-fill" style={{ width: `${row.pct}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="freshness-grid">
+            {freshnessRows.map((row) => (
+              <div key={row.label} className="freshness-item">
+                <span className="label">{row.label}</span>
+                <strong>{row.display}</strong>
+                <span className={`freshness-pill ${row.state}`}>{row.state.toUpperCase()}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="growth-trend-card">
+            <div className="chart-header">
+              <h3>Growth Since Page Open</h3>
+              <span>{growthSnapshots.length} snapshots</span>
+            </div>
+            {trendHasData ? (
+              <svg viewBox="0 0 360 90" className="growth-sparkline" role="img" aria-label="Growth trends">
+                <path d={samplesPath} className="sparkline-primary" />
+                <path d={featuresPath} className="sparkline-secondary" />
+              </svg>
+            ) : (
+              <p>Collecting trend points...</p>
+            )}
+            <p className="growth-legend">Orange: ML samples. Blue: feature rows.</p>
+          </div>
+        </div>
+      )}
       {data && (
         <>
           <div className="update-run-card">
