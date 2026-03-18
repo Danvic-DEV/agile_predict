@@ -9,6 +9,7 @@ from src.repositories.forecast_data_write_repo import ForecastDataWriteRepositor
 from src.repositories.forecast_repo import ForecastRepository
 from src.repositories.forecast_write_repo import ForecastWriteRepository
 from src.repositories.price_history_repo import PriceHistoryRepository
+from src.repositories.price_history_write_repo import PriceHistoryWriteRepository
 
 
 class UnitOfWork:
@@ -21,6 +22,7 @@ class UnitOfWork:
         self.agile_data = AgileDataRepository(session)
         self.agile_data_writes = AgileDataWriteRepository(session)
         self.price_history = PriceHistoryRepository(session)
+        self.price_history_writes = PriceHistoryWriteRepository(session)
 
     def commit(self) -> None:
         self.session.commit()

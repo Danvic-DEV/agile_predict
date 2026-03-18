@@ -34,3 +34,10 @@ class AgileDataWriteRepository:
         stmt = delete(AgileDataORM).where(AgileDataORM.forecast_id == forecast_id)
         result = self.session.execute(stmt)
         return int(result.rowcount or 0)
+
+    def delete_for_forecasts(self, forecast_ids: list[int]) -> int:
+        if not forecast_ids:
+            return 0
+        stmt = delete(AgileDataORM).where(AgileDataORM.forecast_id.in_(forecast_ids))
+        result = self.session.execute(stmt)
+        return int(result.rowcount or 0)

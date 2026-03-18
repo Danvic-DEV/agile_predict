@@ -8,11 +8,15 @@ from zoneinfo import ZoneInfo
 from src.core.regions import REGION_FACTORS, normalize_region
 from src.repositories.types import AgileDataWrite, ForecastDataWrite
 
+_HISTORY_NAME_PREFIX = "bundle::history-"
+
 
 class _ForecastRow(Protocol):
     id: int
     name: str
     created_at: datetime
+    mean: float | None
+    stdev: float | None
 
 
 class _ForecastWrites(Protocol):
@@ -28,9 +32,18 @@ class _ForecastWrites(Protocol):
     ) -> _ForecastRow:
         ...
 
+    def list_older_than(self, cutoff: datetime) -> list[_ForecastRow]:
+        ...
+
+    def delete_by_ids(self, ids: list[int]) -> int:
+        ...
+
 
 class _ForecastDataWrites(Protocol):
     def delete_for_forecast(self, forecast_id: int) -> int:
+        ...
+
+    def delete_for_forecasts(self, forecast_ids: list[int]) -> int:
         ...
 
     def bulk_insert(self, rows: list[ForecastDataWrite]) -> int:
@@ -39,6 +52,9 @@ class _ForecastDataWrites(Protocol):
 
 class _AgileDataWrites(Protocol):
     def delete_for_forecast(self, forecast_id: int) -> int:
+        ...
+
+    def delete_for_forecasts(self, forecast_ids: list[int]) -> int:
         ...
 
     def bulk_insert(self, rows: list[AgileDataWrite]) -> int:
@@ -89,6 +105,21 @@ class BootstrapBundleResult:
     idempotent_hit: bool
 
 
+@dataclass(frozen=True)
+class HistoryForecastFeatureRow:
+    """Real feature values for a single 30-minute slot."""
+
+    date_time: datetime
+    bm_wind: float
+    solar: float
+    emb_wind: float
+    temp_2m: float
+    wind_10m: float
+    rad: float
+    demand: float
+    day_ahead: float | None = None
+
+
 def _day_ahead_to_agile(value: float, dt: datetime, region: str) -> float:
     mult, peak_offset = REGION_FACTORS[region]
     agile = value * mult
@@ -117,7 +148,6 @@ def write_bootstrap_bundle(uow: BootstrapBundleUoW, config: BootstrapBundleConfi
         )
     else:
         idempotent_hit = True
-        # Update persisted diagnostics fields even when reusing an idempotent forecast row.
         if config.forecast_mean is not None:
             forecast.mean = config.forecast_mean
         if config.forecast_stdev is not None:
@@ -188,6 +218,91 @@ def write_bootstrap_bundle(uow: BootstrapBundleUoW, config: BootstrapBundleConfi
         forecast_data_points_written=forecast_data_written,
         agile_data_points_written=agile_written,
         regions=regions,
+        created_at=forecast.created_at,
+        idempotent_hit=idempotent_hit,
+    )
+
+
+def prune_old_forecasts(uow: BootstrapBundleUoW, max_age_days: int = 65) -> int:
+    cutoff = datetime.now(timezone.utc) - timedelta(days=max_age_days)
+    old_forecasts = uow.forecast_writes.list_older_than(cutoff)
+    old_history = [f for f in old_forecasts if f.name.startswith(_HISTORY_NAME_PREFIX)]
+    if not old_history:
+        return 0
+
+    ids = [f.id for f in old_history]
+    uow.forecast_data_writes.delete_for_forecasts(ids)
+    uow.agile_data_writes.delete_for_forecasts(ids)
+    uow.forecast_writes.delete_by_ids(ids)
+    return len(ids)
+
+
+def write_history_forecast(
+    uow: BootstrapBundleUoW,
+    feature_rows: list[HistoryForecastFeatureRow],
+    now: datetime | None = None,
+    regions: tuple[str, ...] = ("X", "G"),
+    forecast_mean: float | None = None,
+    forecast_stdev: float | None = None,
+) -> BootstrapBundleResult:
+    ref = now or datetime.now(timezone.utc)
+    key = ref.strftime("%Y-%m-%dT%H:%M")
+    forecast_name = f"{_HISTORY_NAME_PREFIX}{key}"
+    norm_regions = tuple(normalize_region(r) for r in dict.fromkeys(regions))
+
+    forecast = uow.forecast_writes.get_by_name(forecast_name)
+    if forecast is None:
+        forecast = uow.forecast_writes.create_forecast(
+            name=forecast_name,
+            created_at=ref,
+            mean=forecast_mean,
+            stdev=forecast_stdev,
+        )
+        idempotent_hit = False
+    else:
+        idempotent_hit = True
+        uow.forecast_data_writes.delete_for_forecast(forecast.id)
+        uow.agile_data_writes.delete_for_forecast(forecast.id)
+
+    fd_rows: list[ForecastDataWrite] = []
+    agile_rows: list[AgileDataWrite] = []
+    for row in feature_rows:
+        fd_rows.append(
+            ForecastDataWrite(
+                forecast_id=forecast.id,
+                date_time=row.date_time,
+                day_ahead=row.day_ahead,
+                bm_wind=row.bm_wind,
+                solar=row.solar,
+                emb_wind=row.emb_wind,
+                temp_2m=row.temp_2m,
+                wind_10m=row.wind_10m,
+                rad=row.rad,
+                demand=row.demand,
+            )
+        )
+        for region in norm_regions:
+            pred = _day_ahead_to_agile(row.day_ahead or 0.0, row.date_time, region)
+            agile_rows.append(
+                AgileDataWrite(
+                    forecast_id=forecast.id,
+                    region=region,
+                    agile_pred=round(pred, 4),
+                    agile_low=round(pred - 1.5, 4),
+                    agile_high=round(pred + 1.5, 4),
+                    date_time=row.date_time,
+                )
+            )
+
+    fd_written = uow.forecast_data_writes.bulk_insert(fd_rows)
+    agile_written = uow.agile_data_writes.bulk_insert(agile_rows)
+
+    return BootstrapBundleResult(
+        forecast_name=forecast.name,
+        forecast_id=forecast.id,
+        forecast_data_points_written=fd_written,
+        agile_data_points_written=agile_written,
+        regions=norm_regions,
         created_at=forecast.created_at,
         idempotent_hit=idempotent_hit,
     )

@@ -1,9 +1,24 @@
+import logging
+from datetime import datetime, timezone
+
+import pandas as pd
+
 from src.core.settings import settings
 from src.core.update_job_state import write_last_update_job_state
-from src.domain.bootstrap_bundle import BootstrapBundleConfig, write_bootstrap_bundle
+from src.domain.bootstrap_bundle import (
+    BootstrapBundleConfig,
+    HistoryForecastFeatureRow,
+    prune_old_forecasts,
+    write_bootstrap_bundle,
+    write_history_forecast,
+)
 from src.domain.forecast_pipeline import ForecastRunResult, run_forecast_pipeline
+from src.ml.ingest.grid_weather import fetch_grid_weather_features
+from src.ml.ingest.nordpool import fetch_day_ahead_prices
 from src.ml.parity.day_ahead_xgb import check_ml_training_readiness, run_ml_day_ahead_forecast
 from src.repositories.unit_of_work import UnitOfWork
+
+log = logging.getLogger(__name__)
 
 
 def _diff_metrics(reference: tuple[float, ...], candidate: tuple[float, ...]) -> tuple[float, float, float] | None:
@@ -127,6 +142,86 @@ def run_update_forecast_job(uow: UnitOfWork) -> ForecastRunResult:
         source=source,
         day_ahead_points=len(day_ahead_values),
     )
+
+    # ------------------------------------------------------------------
+    # Step 2: fetch real grid+weather features and write a dated history
+    # forecast row so the ML trainer accumulates real training data.
+    # Failures here are non-fatal — we log and continue.
+    # ------------------------------------------------------------------
+    grid_error: str | None = None
+    history_records_written = 0
+    try:
+        features_df = fetch_grid_weather_features(lookback_days=62)
+
+        # Build feature rows: align the feature DataFrame to 30min UTC slots
+        # and tag each row with the actual Nordpool day-ahead price if available.
+        # We use the pipeline's known prices for the current window only; all
+        # historical slots get day_ahead=None (will be joined from PriceHistoryORM).
+        feature_rows: list[HistoryForecastFeatureRow] = []
+        for ts, row in features_df.iterrows():
+            ts_utc = pd.Timestamp(ts).tz_convert("UTC") if getattr(ts, "tzinfo", None) else pd.Timestamp(ts, tz="UTC")
+            feature_rows.append(
+                HistoryForecastFeatureRow(
+                    date_time=ts_utc.to_pydatetime(),
+                    bm_wind=float(row["bm_wind"]),
+                    solar=float(row["solar"]),
+                    emb_wind=float(row["emb_wind"]),
+                    demand=float(row["demand"]),
+                    temp_2m=float(row["temp_2m"]),
+                    wind_10m=float(row["wind_10m"]),
+                    rad=float(row["rad"]),
+                    day_ahead=None,
+                )
+            )
+
+        if feature_rows:
+            hist_result = write_history_forecast(
+                uow=uow,
+                feature_rows=feature_rows,
+                now=None,
+                regions=tuple(settings.bootstrap_regions_list),
+                forecast_mean=ml_cv_mean_rmse,
+                forecast_stdev=ml_cv_stdev_rmse,
+            )
+            history_records_written = (
+                hist_result.forecast_data_points_written + hist_result.agile_data_points_written
+            )
+            log.info("History forecast written: %s rows", history_records_written)
+    except Exception as exc:  # noqa: BLE001
+        grid_error = str(exc)
+        log.warning("Grid/weather feature fetch failed (non-fatal): %s", exc)
+
+    # ------------------------------------------------------------------
+    # Step 3: upsert today's Nordpool prices into PriceHistoryORM so the
+    # ML join has actual price targets to train against.
+    # ------------------------------------------------------------------
+    price_upsert_count = 0
+    try:
+        now_utc = datetime.now(timezone.utc)
+        raw_prices = fetch_day_ahead_prices(now=now_utc)
+        if raw_prices:
+            price_rows = [
+                {
+                    "date_time": dt,
+                    "day_ahead": float(price),
+                    "agile": float(price),  # placeholder; actual agile filled by history if available
+                }
+                for dt, price in raw_prices.items()
+            ]
+            price_upsert_count = uow.price_history_writes.upsert_many(price_rows)
+            log.info("Upserted %s Nordpool price rows into PriceHistoryORM", price_upsert_count)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Nordpool price upsert failed (non-fatal): %s", exc)
+
+    # ------------------------------------------------------------------
+    # Step 4: prune history forecasts older than 65 days.
+    # ------------------------------------------------------------------
+    try:
+        pruned = prune_old_forecasts(uow=uow, max_age_days=65)
+        if pruned:
+            log.info("Pruned %s old history forecast rows", pruned)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Forecast pruning failed (non-fatal): %s", exc)
 
     write_last_update_job_state(
         source=source,
