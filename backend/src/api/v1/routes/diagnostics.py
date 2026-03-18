@@ -1,20 +1,25 @@
 import json
 import hashlib
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException
+from sqlalchemy import func, select
 
 from src.api.v1.deps import UnitOfWorkDep
 from src.api.errors import http_error
 from src.core.update_job_state import read_last_update_job_state, read_update_job_history
+from src.repositories.sql_models import ForecastDataORM, ForecastORM, PriceHistoryORM
 from src.schemas.diagnostics import (
+    IngestPipelineHealth,
     LatestForecastDiagnostics,
-    MlParityScorecard,
     LatestParitySummary,
+    MlParityScorecard,
     ParityHistoryItem,
     ParityHistoryResponse,
+    PipelineStageStatus,
+    SourceCollectionStatus,
 )
 
 router = APIRouter()
@@ -95,6 +100,17 @@ def _parse_report(path: Path) -> LatestParitySummary | None:
         report_path=_relative_report_path(path),
         report_sha256=report_sha256,
     )
+
+
+def _source_status(last_seen: datetime | None, now: datetime) -> str:
+    if last_seen is None:
+        return "missing"
+    age_minutes = int((now - last_seen).total_seconds() // 60)
+    if age_minutes <= 90:
+        return "healthy"
+    if age_minutes <= 180:
+        return "aging"
+    return "stale"
 
 
 @router.get("/latest-summary", response_model=LatestForecastDiagnostics)
@@ -214,6 +230,157 @@ def ml_parity_scorecard(window_size: int = 30) -> MlParityScorecard:
         confidence_percent=confidence,
         confidence_label=label,
         latest_error=update_state.get("ml_error"),
+    )
+
+
+@router.get("/ingest-pipeline-health", response_model=IngestPipelineHealth)
+def ingest_pipeline_health(uow: UnitOfWorkDep) -> IngestPipelineHealth:
+    now = datetime.now(timezone.utc)
+    since_24h = now - timedelta(hours=24)
+
+    def forecast_field_source(key: str, label: str, field_name: str) -> SourceCollectionStatus:
+        field = getattr(ForecastDataORM, field_name)
+
+        total_rows = (
+            uow.session.execute(select(func.count(ForecastDataORM.id)).where(field.is_not(None))).scalar_one() or 0
+        )
+        rows_24h = (
+            uow.session.execute(
+                select(func.count(ForecastDataORM.id)).where(
+                    field.is_not(None), ForecastDataORM.date_time >= since_24h
+                )
+            ).scalar_one()
+            or 0
+        )
+        last_seen = uow.session.execute(
+            select(func.max(ForecastDataORM.date_time)).where(field.is_not(None))
+        ).scalar_one_or_none()
+        recent_min, recent_max = uow.session.execute(
+            select(func.min(field), func.max(field)).where(
+                field.is_not(None), ForecastDataORM.date_time >= since_24h
+            )
+        ).one()
+
+        status = _source_status(last_seen, now)
+        return SourceCollectionStatus(
+            key=key,
+            label=label,
+            status=status,
+            total_rows=int(total_rows),
+            rows_24h=int(rows_24h),
+            last_seen=last_seen.isoformat() if last_seen else None,
+            recent_min=float(recent_min) if recent_min is not None else None,
+            recent_max=float(recent_max) if recent_max is not None else None,
+        )
+
+    def price_history_source() -> SourceCollectionStatus:
+        total_rows = uow.session.execute(select(func.count(PriceHistoryORM.id))).scalar_one() or 0
+        rows_24h = (
+            uow.session.execute(
+                select(func.count(PriceHistoryORM.id)).where(PriceHistoryORM.date_time >= since_24h)
+            ).scalar_one()
+            or 0
+        )
+        last_seen = uow.session.execute(select(func.max(PriceHistoryORM.date_time))).scalar_one_or_none()
+        recent_min, recent_max = uow.session.execute(
+            select(func.min(PriceHistoryORM.day_ahead), func.max(PriceHistoryORM.day_ahead)).where(
+                PriceHistoryORM.date_time >= since_24h
+            )
+        ).one()
+        status = _source_status(last_seen, now)
+        return SourceCollectionStatus(
+            key="nordpool_day_ahead",
+            label="Nordpool day-ahead",
+            status=status,
+            total_rows=int(total_rows),
+            rows_24h=int(rows_24h),
+            last_seen=last_seen.isoformat() if last_seen else None,
+            recent_min=float(recent_min) if recent_min is not None else None,
+            recent_max=float(recent_max) if recent_max is not None else None,
+        )
+
+    sources = [
+        forecast_field_source("neso_bm_wind", "NESO BM wind", "bm_wind"),
+        forecast_field_source("neso_solar", "NESO solar", "solar"),
+        forecast_field_source("neso_embedded_wind", "NESO embedded wind", "emb_wind"),
+        forecast_field_source("elexon_demand", "Elexon/NESO demand", "demand"),
+        forecast_field_source("openmeteo_temp", "Open-Meteo temp_2m", "temp_2m"),
+        forecast_field_source("openmeteo_wind", "Open-Meteo wind_10m", "wind_10m"),
+        forecast_field_source("openmeteo_rad", "Open-Meteo radiation", "rad"),
+        price_history_source(),
+    ]
+
+    source_health_ok = [s for s in sources if s.status == "healthy"]
+    all_sources_healthy = len(source_health_ok) == len(sources)
+
+    forecast_count = uow.session.execute(select(func.count(ForecastORM.id))).scalar_one() or 0
+    forecast_data_count = uow.session.execute(select(func.count(ForecastDataORM.id))).scalar_one() or 0
+    price_count = uow.session.execute(select(func.count(PriceHistoryORM.id))).scalar_one() or 0
+
+    scorecard = ml_parity_scorecard(30)
+    parity = parity_last_summary()
+
+    stages = [
+        PipelineStageStatus(
+            key="forecast_runs",
+            label="1. Forecast runs created",
+            status="ready" if forecast_count >= 2 else "warming",
+            current=int(forecast_count),
+            target=2,
+            detail="Need at least two forecast runs to compare behavior over time.",
+        ),
+        PipelineStageStatus(
+            key="feature_rows",
+            label="2. Feature rows collected",
+            status="ready" if forecast_data_count >= 50 else "warming",
+            current=int(forecast_data_count),
+            target=50,
+            detail="Feature history must accumulate before parity scoring is meaningful.",
+        ),
+        PipelineStageStatus(
+            key="price_rows",
+            label="3. Price rows collected",
+            status="ready" if price_count >= 50 else "warming",
+            current=int(price_count),
+            target=50,
+            detail="Day-ahead price history is required for training targets.",
+        ),
+        PipelineStageStatus(
+            key="parity_samples",
+            label="4. ML parity sample window",
+            status="ready" if scorecard.sample_size >= scorecard.window_size else "warming",
+            current=scorecard.sample_size,
+            target=scorecard.window_size,
+            detail="Comparable ML vs deterministic runs are required for confidence scoring.",
+        ),
+        PipelineStageStatus(
+            key="parity_report",
+            label="5. Parity report available",
+            status="ready" if parity.report_available else "warming",
+            current=1 if parity.report_available else 0,
+            target=1,
+            detail="Parity report confirms the comparison pipeline has produced artifacts.",
+        ),
+    ]
+
+    if scorecard.sample_size < scorecard.window_size:
+        next_action = "Continue scheduled updates until parity sample window is filled."
+    elif not parity.report_available:
+        next_action = "Run parity gate or wait for parity report generation."
+    elif not all_sources_healthy:
+        next_action = "One or more upstream sources are stale; inspect source freshness rows."
+    else:
+        next_action = "All ingestion sources are healthy and pipeline stages are complete."
+
+    return IngestPipelineHealth(
+        generated_at=now.isoformat(),
+        training_mode=scorecard.training_mode,
+        next_action=next_action,
+        all_sources_healthy=all_sources_healthy,
+        healthy_source_count=len(source_health_ok),
+        expected_source_count=len(sources),
+        stages=stages,
+        sources=sources,
     )
 
 

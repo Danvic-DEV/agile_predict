@@ -128,3 +128,34 @@ export interface MlParityScorecard {
   confidence_label: string;
   latest_error: string | null;
 }
+
+export interface PipelineStageStatus {
+  key: string;
+  label: string;
+  status: string;
+  current: number;
+  target: number;
+  detail: string;
+}
+
+export interface SourceCollectionStatus {
+  key: string;
+  label: string;
+  status: string;
+  total_rows: number;
+  rows_24h: number;
+  last_seen: string | null;
+  recent_min: number | null;
+  recent_max: number | null;
+}
+
+export interface IngestPipelineHealth {
+  generated_at: string;
+  training_mode: boolean;
+  next_action: string;
+  all_sources_healthy: boolean;
+  healthy_source_count: number;
+  expected_source_count: number;
+  stages: PipelineStageStatus[];
+  sources: SourceCollectionStatus[];
+}

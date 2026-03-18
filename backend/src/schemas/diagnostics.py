@@ -86,3 +86,34 @@ class MlParityScorecard(BaseModel):
     confidence_percent: float
     confidence_label: str
     latest_error: str | None
+
+
+class PipelineStageStatus(BaseModel):
+    key: str
+    label: str
+    status: str
+    current: int
+    target: int
+    detail: str
+
+
+class SourceCollectionStatus(BaseModel):
+    key: str
+    label: str
+    status: str
+    total_rows: int
+    rows_24h: int
+    last_seen: str | None
+    recent_min: float | None
+    recent_max: float | None
+
+
+class IngestPipelineHealth(BaseModel):
+    generated_at: str
+    training_mode: bool
+    next_action: str
+    all_sources_healthy: bool
+    healthy_source_count: int
+    expected_source_count: int
+    stages: list[PipelineStageStatus]
+    sources: list[SourceCollectionStatus]

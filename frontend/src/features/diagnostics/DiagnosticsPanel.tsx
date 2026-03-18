@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import {
+  fetchIngestPipelineHealth,
   fetchLatestDiagnostics,
   fetchParityHistory,
   fetchLatestParitySummary,
@@ -9,6 +10,7 @@ import {
   runUpdateForecastJob,
 } from "./api";
 import type {
+  IngestPipelineHealth,
   LatestForecastDiagnostics,
   LatestParitySummary,
   MlParityScorecard,
@@ -74,6 +76,25 @@ function formatUpdateAbsoluteTime(value: string | null): string {
   }).format(new Date(timestamp));
 }
 
+function formatIsoDate(value: string | null): string {
+  if (!value) {
+    return "n/a";
+  }
+  const ts = Date.parse(value);
+  if (Number.isNaN(ts)) {
+    return "n/a";
+  }
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+    timeZone: "UTC",
+  }).format(new Date(ts));
+}
+
 function minutesSince(value: string | null, nowMs: number): number | null {
   if (!value) {
     return null;
@@ -137,6 +158,7 @@ export function DiagnosticsPanel() {
   const [parity, setParity] = useState<LatestParitySummary | null>(null);
   const [scorecard, setScorecard] = useState<MlParityScorecard | null>(null);
   const [parityHistory, setParityHistory] = useState<ParityHistoryItem[]>([]);
+  const [pipelineHealth, setPipelineHealth] = useState<IngestPipelineHealth | null>(null);
   const [error, setError] = useState("");
   const [parityError, setParityError] = useState("");
   const [actionState, setActionState] = useState<"idle" | "running">("idle");
@@ -174,7 +196,7 @@ export function DiagnosticsPanel() {
 
   async function refreshParity() {
     try {
-      const [result, scorecardResult, parityHistoryResult] = await Promise.all([
+      const [result, scorecardResult, parityHistoryResult, healthResult] = await Promise.all([
         fetchLatestParitySummary(),
         fetchMlParityScorecard(30),
         fetchParityHistory({
@@ -183,14 +205,16 @@ export function DiagnosticsPanel() {
           status: historyStatusFilter === "all" ? undefined : historyStatusFilter,
           since: buildHistorySinceIso(),
         }),
+        fetchIngestPipelineHealth(),
       ]);
       setParity(result);
       setScorecard(scorecardResult);
       setParityHistory(parityHistoryResult.items);
       setHistoryTotal(parityHistoryResult.total);
+      setPipelineHealth(healthResult);
       setParityError("");
     } catch (err) {
-      setParityError(err instanceof Error ? err.message : "Failed loading parity summary");
+      setParityError(err instanceof Error ? err.message : "Failed loading parity/health summary");
     }
   }
 
@@ -211,7 +235,7 @@ export function DiagnosticsPanel() {
         setError("");
 
         try {
-          const [parityResult, scorecardResult, parityHistoryResult] = await Promise.all([
+          const [parityResult, scorecardResult, parityHistoryResult, healthResult] = await Promise.all([
             fetchLatestParitySummary(),
             fetchMlParityScorecard(30),
             fetchParityHistory({
@@ -220,6 +244,7 @@ export function DiagnosticsPanel() {
               status: historyStatusFilter === "all" ? undefined : historyStatusFilter,
               since: buildHistorySinceIso(),
             }),
+            fetchIngestPipelineHealth(),
           ]);
           if (!active) {
             return;
@@ -228,6 +253,7 @@ export function DiagnosticsPanel() {
           setScorecard(scorecardResult);
           setParityHistory(parityHistoryResult.items);
           setHistoryTotal(parityHistoryResult.total);
+          setPipelineHealth(healthResult);
           setParityError("");
         } catch (parityErr) {
           if (!active) {
@@ -485,6 +511,74 @@ export function DiagnosticsPanel() {
       {error && <p>Diagnostics unavailable: {error}</p>}
       {parityError && <p>Parity summary unavailable: {parityError}</p>}
       {!error && !data && <p>Loading diagnostics...</p>}
+      {pipelineHealth && (
+        <div className="pipeline-health-card">
+          <div className="chart-header">
+            <h3>Pipeline Health (End-to-End)</h3>
+            <span className={pipelineHealth.all_sources_healthy ? "growth-badge ready" : "growth-badge warming"}>
+              Sources healthy: {pipelineHealth.healthy_source_count}/{pipelineHealth.expected_source_count}
+            </span>
+          </div>
+          <p className="pipeline-next-action">Next action: {pipelineHealth.next_action}</p>
+
+          <div className="pipeline-stage-list">
+            {pipelineHealth.stages.map((stage) => (
+              <div key={stage.key} className="pipeline-stage-item">
+                <div className="pipeline-stage-topline">
+                  <strong>{stage.label}</strong>
+                  <span className={`pipeline-status-pill ${stage.status === "ready" ? "ok" : "warn"}`}>
+                    {stage.status.toUpperCase()} {stage.current}/{stage.target}
+                  </span>
+                </div>
+                <p>{stage.detail}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="source-table-wrap">
+            <table className="source-table">
+              <thead>
+                <tr>
+                  <th>Source</th>
+                  <th>Status</th>
+                  <th>Rows (24h)</th>
+                  <th>Total Rows</th>
+                  <th>Last Seen (UTC)</th>
+                  <th>Recent Range</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pipelineHealth.sources.map((source) => (
+                  <tr key={source.key}>
+                    <td>{source.label}</td>
+                    <td>
+                      <span
+                        className={`pipeline-status-pill ${
+                          source.status === "healthy"
+                            ? "ok"
+                            : source.status === "aging"
+                              ? "warn"
+                              : "bad"
+                        }`}
+                      >
+                        {source.status.toUpperCase()}
+                      </span>
+                    </td>
+                    <td>{source.rows_24h}</td>
+                    <td>{source.total_rows}</td>
+                    <td>{formatIsoDate(source.last_seen)}</td>
+                    <td>
+                      {source.recent_min === null || source.recent_max === null
+                        ? "n/a"
+                        : `${source.recent_min.toFixed(2)} to ${source.recent_max.toFixed(2)}`}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
       {(data || scorecard) && (
         <div className="growth-visibility-card">
           <div className="chart-header">

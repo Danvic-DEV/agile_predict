@@ -2,6 +2,7 @@ import { getJson, postJson } from "../../lib/api/client";
 import type {
   BootstrapForecastBundleRequest,
   BootstrapForecastBundleResponse,
+  IngestPipelineHealth,
   LatestForecastDiagnostics,
   MlParityScorecard,
   ParityHistoryResponse,
@@ -21,6 +22,10 @@ export function fetchMlParityScorecard(windowSize = 30): Promise<MlParityScoreca
   const params = new URLSearchParams();
   params.set("window_size", String(windowSize));
   return getJson<MlParityScorecard>(`/diagnostics/ml-parity-scorecard?${params.toString()}`);
+}
+
+export function fetchIngestPipelineHealth(): Promise<IngestPipelineHealth> {
+  return getJson<IngestPipelineHealth>("/diagnostics/ingest-pipeline-health");
 }
 
 export function fetchParityHistory(options?: {

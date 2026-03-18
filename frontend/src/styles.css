@@ -500,3 +500,92 @@ body {
   font-size: 0.8rem;
 }
 
+.pipeline-health-card {
+  margin-top: 12px;
+  border: 1px solid rgba(201, 214, 220, 0.22);
+  border-radius: 10px;
+  padding: 12px;
+  background: rgba(17, 26, 35, 0.45);
+}
+
+.pipeline-next-action {
+  margin: 8px 0 12px;
+  color: #d7e2e8;
+  font-size: 0.9rem;
+}
+
+.pipeline-stage-list {
+  display: grid;
+  gap: 8px;
+}
+
+.pipeline-stage-item {
+  border: 1px solid rgba(201, 214, 220, 0.16);
+  border-radius: 10px;
+  padding: 10px;
+  background: rgba(10, 20, 30, 0.5);
+}
+
+.pipeline-stage-topline {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.pipeline-stage-item p {
+  margin: 8px 0 0;
+  font-size: 0.83rem;
+  color: #9eb2be;
+}
+
+.pipeline-status-pill {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.pipeline-status-pill.ok {
+  color: #b9f0c5;
+  border: 1px solid rgba(185, 240, 197, 0.45);
+  background: rgba(20, 90, 45, 0.35);
+}
+
+.pipeline-status-pill.warn {
+  color: #f2d597;
+  border: 1px solid rgba(242, 213, 151, 0.45);
+  background: rgba(95, 70, 20, 0.35);
+}
+
+.pipeline-status-pill.bad {
+  color: #ffb0b0;
+  border: 1px solid rgba(255, 176, 176, 0.45);
+  background: rgba(120, 30, 30, 0.35);
+}
+
+.source-table-wrap {
+  margin-top: 12px;
+  overflow-x: auto;
+}
+
+.source-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+
+.source-table th,
+.source-table td {
+  padding: 8px 6px;
+  border-bottom: 1px solid rgba(201, 214, 220, 0.12);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.source-table th {
+  color: #9eb2be;
+  font-weight: 600;
+}
+
