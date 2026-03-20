@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-labelledby="title desc">
+  <title id="title">Agile Predict Logo</title>
+  <desc id="desc">Agile Predict brand logo - 128x128 SVG</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#1e3a44"/>
+      <stop offset="100%" stop-color="#0b1118"/>
+    </linearGradient>
+    <linearGradient id="line" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0%" stop-color="#f2b84b"/>
+      <stop offset="100%" stop-color="#79c8ff"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#bg)" stroke="#f2b84b" stroke-opacity="0.45" stroke-width="2"/>
+  <path d="M22 86 L40 70 L54 76 L70 52 L86 60 L106 40" fill="none" stroke="url(#line)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="106" cy="40" r="6" fill="#79c8ff"/>
+  <path d="M32 100 L44 32 H58 L68 72 L78 32 H92 L78 100 H64 L52 60 L42 100 Z" fill="#f4f1e8" fill-opacity="0.95"/>
+</svg>
