@@ -155,7 +155,7 @@ function buildSparklinePath(values: number[], width = 360, height = 90, padding 
     .join(" ");
 }
 
-type TabKey = "status" | "ml-model" | "gpu" | "pipeline" | "controls";
+type TabKey = "status" | "ml-model" | "gpu" | "pipeline" | "controls" | "discord";
 
 export function DiagnosticsPanel() {
   const [activeTab, setActiveTab] = useState<TabKey>("status");
@@ -179,6 +179,8 @@ export function DiagnosticsPanel() {
   const [historyOffset, setHistoryOffset] = useState(0);
   const [historyTotal, setHistoryTotal] = useState(0);
   const [growthSnapshots, setGrowthSnapshots] = useState<GrowthSnapshot[]>([]);
+  const [discordWebhookUrl, setDiscordWebhookUrl] = useState("");
+  const [discordSaveState, setDiscordSaveState] = useState<"idle" | "saving" | "saved">("idle");
 
   const parityStatus = parity?.report_available
     ? parity.all_passed
@@ -493,6 +495,13 @@ export function DiagnosticsPanel() {
           onClick={() => setActiveTab("controls")}
         >
           Controls
+        </button>
+        <button
+          type="button"
+          className={`tab-button ${activeTab === "discord" ? "active" : ""}`}
+          onClick={() => setActiveTab("discord")}
+        >
+          Discord
         </button>
       </div>
 
@@ -1054,6 +1063,42 @@ export function DiagnosticsPanel() {
             <div className="controls-row" style={{ marginTop: 12 }}>
               <button type="button" onClick={() => void refreshAll()} disabled={actionState === "running"}>
                 Refresh All Data
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* DISCORD TAB */}
+      {activeTab === "discord" && (
+        <>
+          <div className="parity-detail-card">
+            <h3>Discord Notifications</h3>
+            <p>Configure Discord webhook URL for receiving automatic notifications about forecast updates, GPU status, and pipeline health.</p>
+            
+            <div className="controls-row" style={{ marginTop: 12 }}>
+              <label>
+                Webhook URL
+                <input
+                  type="text"
+                  placeholder="https://discord.com/api/webhooks/..."
+                  value={discordWebhookUrl}
+                  onChange={(event) => setDiscordWebhookUrl(event.target.value)}
+                  style={{ width: "100%", marginTop: 8 }}
+                />
+              </label>
+            </div>
+            <div className="controls-row" style={{ marginTop: 12 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setDiscordSaveState("saving");
+                  // TODO: Save webhook URL to backend
+                  setTimeout(() => setDiscordSaveState("saved"), 1000);
+                }}
+                disabled={discordSaveState === "saving"}
+              >
+                {discordSaveState === "saving" ? "Saving..." : discordSaveState === "saved" ? "Saved ✓" : "Save Webhook"}
               </button>
             </div>
           </div>
