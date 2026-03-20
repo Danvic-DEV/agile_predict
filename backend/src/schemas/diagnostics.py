@@ -105,6 +105,7 @@ class MlGpuStatus(BaseModel):
 
 
 class DiscordNotificationPreferences(BaseModel):
+    update_started: bool = True
     update_success: bool = True
     update_failure: bool = True
     parity_alert: bool = True

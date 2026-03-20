@@ -266,6 +266,20 @@ body {
   margin: 0;
 }
 
+.inline-action-message {
+  margin: 12px 0 0;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.inline-action-message.info {
+  color: #d8e2e7;
+}
+
+.inline-action-message.success {
+  color: #b9f0c5;
+}
+
 .gpu-reason {
   margin-top: 10px;
   color: #f3c9c9;

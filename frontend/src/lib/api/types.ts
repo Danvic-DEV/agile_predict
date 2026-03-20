@@ -142,6 +142,7 @@ export interface MlGpuStatus {
 }
 
 export interface DiscordNotificationPreferences {
+  update_started: boolean;
   update_success: boolean;
   update_failure: boolean;
   parity_alert: boolean;

@@ -129,6 +129,18 @@ def send_discord_test_notification() -> tuple[bool, str]:
     )
 
 
+def send_update_started_notification(*, trigger: str) -> tuple[bool, str]:
+    return send_discord_notification(
+        preference_key="update_started",
+        title="Forecast update started",
+        description="A forecast update run has been triggered and is now in progress.",
+        color=0x4AA3FF,
+        fields=[
+            _field("Trigger", trigger),
+        ],
+    )
+
+
 def send_update_success_notification(
     *,
     forecast_name: str,

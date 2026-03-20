@@ -162,6 +162,7 @@ function buildSparklinePath(values: number[], width = 360, height = 90, padding 
 type TabKey = "status" | "ml-model" | "gpu" | "pipeline" | "controls" | "discord";
 
 const DEFAULT_DISCORD_NOTIFICATIONS: DiscordNotificationPreferences = {
+  update_started: true,
   update_success: true,
   update_failure: true,
   parity_alert: true,
@@ -183,6 +184,7 @@ export function DiagnosticsPanel() {
   const [parityError, setParityError] = useState("");
   const [actionState, setActionState] = useState<"idle" | "running">("idle");
   const [actionMessage, setActionMessage] = useState("");
+  const [activeActionKind, setActiveActionKind] = useState<"seed" | "update" | "gpu" | "discord" | null>(null);
   const [seedPoints, setSeedPoints] = useState(48);
   const [seedRegionsInput, setSeedRegionsInput] = useState("X,G");
   const [seedReplaceExisting, setSeedReplaceExisting] = useState(true);
@@ -394,8 +396,9 @@ export function DiagnosticsPanel() {
   const trendHasData = growthSnapshots.length >= 2;
 
   async function handleSeedBundle() {
+    setActiveActionKind("seed");
     setActionState("running");
-    setActionMessage("");
+    setActionMessage("Seeding bundle. This usually completes quickly.");
     try {
       const parsedRegions = seedRegionsInput
         .split(",")
@@ -424,8 +427,9 @@ export function DiagnosticsPanel() {
   }
 
   async function handleRunUpdateJob() {
+    setActiveActionKind("update");
     setActionState("running");
-    setActionMessage("");
+    setActionMessage("Running update job. This can take a minute while ingest, ML, write, and parity complete.");
     try {
       const result = await runUpdateForecastJob();
       await refreshAll();
@@ -442,6 +446,7 @@ export function DiagnosticsPanel() {
   }
 
   async function handleGpuToggle(enabled: boolean) {
+    setActiveActionKind("gpu");
     setActionState("running");
     setActionMessage("");
     try {
@@ -460,6 +465,7 @@ export function DiagnosticsPanel() {
   }
 
   async function handleSaveDiscordConfig() {
+    setActiveActionKind("discord");
     setDiscordSaveState("saving");
     setActionMessage("");
     try {
@@ -480,6 +486,7 @@ export function DiagnosticsPanel() {
   }
 
   async function handleSendDiscordTest() {
+    setActiveActionKind("discord");
     setDiscordTestState("testing");
     setActionMessage("");
     try {
@@ -1075,9 +1082,12 @@ export function DiagnosticsPanel() {
             <p>Run a complete update: ingest data, train ML, write forecasts, evaluate parity.</p>
             <div className="controls-row">
               <button type="button" onClick={handleRunUpdateJob} disabled={actionState === "running"}>
-                Run Update Job
+                {actionState === "running" && activeActionKind === "update" ? "Running Update Job..." : "Run Update Job"}
               </button>
             </div>
+            {activeActionKind === "update" && actionMessage && (
+              <p className={`inline-action-message ${actionState === "running" ? "info" : "success"}`}>{actionMessage}</p>
+            )}
           </div>
 
           <div className="parity-detail-card">
@@ -1147,6 +1157,14 @@ export function DiagnosticsPanel() {
             </div>
 
             <div className="discord-toggle-list">
+              <label className="discord-toggle-item">
+                <input
+                  type="checkbox"
+                  checked={discordNotifications.update_started}
+                  onChange={(event) => handleDiscordNotificationToggle("update_started", event.target.checked)}
+                />
+                <span>Forecast update started</span>
+              </label>
               <label className="discord-toggle-item">
                 <input
                   type="checkbox"
@@ -1222,6 +1240,7 @@ export function DiagnosticsPanel() {
           <div className="parity-detail-card">
             <h3>Live Notification Coverage</h3>
             <ul className="history-list">
+              <li>Manual update started notification as soon as the job is triggered from the UI.</li>
               <li>Update completion summary with source, record count, device used, and ML drift metrics.</li>
               <li>Update failure alerts for both manual runs and scheduled auto-update runs.</li>
               <li>GPU alerts when GPU is requested but the runtime falls back to CPU.</li>

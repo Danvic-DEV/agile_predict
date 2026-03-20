@@ -152,6 +152,7 @@ def _build_discord_config_status() -> DiscordConfigStatus:
         enabled=bool(webhook_url),
         webhook_url=webhook_url or None,
         notifications=DiscordNotificationPreferences(
+            update_started=bool(notifications.get("update_started", True)),
             update_success=bool(notifications.get("update_success", True)),
             update_failure=bool(notifications.get("update_failure", True)),
             parity_alert=bool(notifications.get("parity_alert", True)),

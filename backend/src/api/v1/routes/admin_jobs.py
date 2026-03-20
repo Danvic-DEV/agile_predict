@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException
 
 from src.api.v1.deps import UnitOfWorkDep
 from src.api.errors import http_error
-from src.core.discord_notifications import send_update_failure_notification
+from src.core.discord_notifications import send_update_failure_notification, send_update_started_notification
 from src.core.regions import normalize_region
 from src.domain.bootstrap_bundle import BootstrapBundleConfig, write_bootstrap_bundle
 from src.jobs.pipelines.update_forecast import run_update_forecast_job
@@ -131,6 +131,7 @@ def bootstrap_forecast_bundle(
 @router.post("/run-update-forecast-job", response_model=RunUpdateJobResponse)
 def run_update_job(uow: UnitOfWorkDep) -> RunUpdateJobResponse:
     try:
+        send_update_started_notification(trigger="manual")
         result = run_update_forecast_job(uow=uow)
         uow.commit()
     except Exception as exc:

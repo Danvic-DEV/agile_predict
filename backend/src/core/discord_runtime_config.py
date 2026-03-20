@@ -12,6 +12,7 @@ _WEBHOOK_PREFIXES = (
     "https://discordapp.com/api/webhooks/",
 )
 _DEFAULT_NOTIFICATIONS: dict[str, bool] = {
+    "update_started": True,
     "update_success": True,
     "update_failure": True,
     "parity_alert": True,
