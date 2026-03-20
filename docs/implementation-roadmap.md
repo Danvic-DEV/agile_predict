@@ -8,6 +8,24 @@ This repository now contains migration scaffolding for a standard stack:
 - Packaging: GHCR-ready single app image
 - Runtime contract: `/config` volume with first-run `.env` generation and persistent DB data
 
+## Container publishing and deployment
+
+The migration stack is packaged as a single container image and published through GitHub Actions to GHCR.
+
+- Workflow: `.github/workflows/ghcr.yml`
+- Docker build file: `deploy/docker/backend.Dockerfile`
+- Image name: `ghcr.io/<repository-owner>/agile-predict`
+- Published tags:
+  - `dev` on branch pushes
+  - `sha-<short-sha>` on branch pushes
+  - `vX.Y.Z` and `X.Y` on version tag pushes
+
+Operational model:
+
+- build and publish happen in GitHub Actions
+- deployment happens by pulling the GHCR image into the target runtime
+- local scripts in `bin/` help with development, maintenance, and backups, but they are not the deployment path
+
 ## Local startup (app container)
 
 Preferred full local stack startup:
@@ -52,6 +70,13 @@ docker run --rm -p 8000:8000 -v "$PWD/runtime-config:/config" agile-predict:dev
 On first run, `/config/.env` is created from `deploy/docker/default.env` and Postgres data is initialized under `/config/postgresql`.
 
 The built frontend is served by the same container on `http://localhost:8000`.
+
+Example GHCR pull and run flow:
+
+```bash
+docker pull ghcr.io/<repository-owner>/agile-predict:dev
+docker run --rm -p 8000:8000 -v "$PWD/runtime-config:/config" ghcr.io/<repository-owner>/agile-predict:dev
+```
 
 ## Backend tests (migration stack)
 

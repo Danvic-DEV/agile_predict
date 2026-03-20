@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import {
+  fetchDiscordConfig,
   fetchIngestPipelineHealth,
   fetchLatestDiagnostics,
   fetchMlGpuStatus,
@@ -9,9 +10,12 @@ import {
   fetchMlParityScorecard,
   runBootstrapForecastBundle,
   runUpdateForecastJob,
+  sendDiscordTest,
+  setDiscordConfig,
   setMlGpuStatus,
 } from "./api";
 import type {
+  DiscordNotificationPreferences,
   IngestPipelineHealth,
   LatestForecastDiagnostics,
   LatestParitySummary,
@@ -157,6 +161,15 @@ function buildSparklinePath(values: number[], width = 360, height = 90, padding 
 
 type TabKey = "status" | "ml-model" | "gpu" | "pipeline" | "controls" | "discord";
 
+const DEFAULT_DISCORD_NOTIFICATIONS: DiscordNotificationPreferences = {
+  update_success: true,
+  update_failure: true,
+  parity_alert: true,
+  gpu_alert: true,
+  daily_digest: true,
+  pipeline_staleness: true,
+};
+
 export function DiagnosticsPanel() {
   const [activeTab, setActiveTab] = useState<TabKey>("status");
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -181,6 +194,12 @@ export function DiagnosticsPanel() {
   const [growthSnapshots, setGrowthSnapshots] = useState<GrowthSnapshot[]>([]);
   const [discordWebhookUrl, setDiscordWebhookUrl] = useState("");
   const [discordSaveState, setDiscordSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const [discordTestState, setDiscordTestState] = useState<"idle" | "testing">("idle");
+  const [discordNotifications, setDiscordNotifications] = useState<DiscordNotificationPreferences>(
+    DEFAULT_DISCORD_NOTIFICATIONS
+  );
+  const [discordEnabled, setDiscordEnabled] = useState(false);
+  const [discordError, setDiscordError] = useState("");
 
   const parityStatus = parity?.report_available
     ? parity.all_passed
@@ -229,8 +248,21 @@ export function DiagnosticsPanel() {
     }
   }
 
+  async function refreshDiscordConfig() {
+    try {
+      const result = await fetchDiscordConfig();
+      setDiscordWebhookUrl(result.webhook_url ?? "");
+      setDiscordNotifications(result.notifications);
+      setDiscordEnabled(result.enabled);
+      setDiscordSaveState("idle");
+      setDiscordError("");
+    } catch (err) {
+      setDiscordError(err instanceof Error ? err.message : "Failed loading Discord configuration");
+    }
+  }
+
   async function refreshAll() {
-    await Promise.all([refreshDiagnostics(), refreshParity()]);
+    await Promise.all([refreshDiagnostics(), refreshParity(), refreshDiscordConfig()]);
   }
 
   useEffect(() => {
@@ -245,35 +277,7 @@ export function DiagnosticsPanel() {
         setData(result);
         setError("");
 
-        try {
-          const [parityResult, scorecardResult, parityHistoryResult, healthResult, gpuResult] = await Promise.all([
-            fetchLatestParitySummary(),
-            fetchMlParityScorecard(30),
-            fetchParityHistory({
-              limit: HISTORY_PAGE_SIZE,
-              offset: historyOffset,
-              status: historyStatusFilter === "all" ? undefined : historyStatusFilter,
-              since: buildHistorySinceIso(),
-            }),
-            fetchIngestPipelineHealth(),
-            fetchMlGpuStatus(),
-          ]);
-          if (!active) {
-            return;
-          }
-          setParity(parityResult);
-          setScorecard(scorecardResult);
-          setParityHistory(parityHistoryResult.items);
-          setHistoryTotal(parityHistoryResult.total);
-          setPipelineHealth(healthResult);
-          setGpuStatus(gpuResult);
-          setParityError("");
-        } catch (parityErr) {
-          if (!active) {
-            return;
-          }
-          setParityError(parityErr instanceof Error ? parityErr.message : "Failed loading parity summary");
-        }
+        await Promise.all([refreshParity(), refreshDiscordConfig()]);
       } catch (err) {
         if (!active) {
           return;
@@ -455,6 +459,48 @@ export function DiagnosticsPanel() {
     }
   }
 
+  async function handleSaveDiscordConfig() {
+    setDiscordSaveState("saving");
+    setActionMessage("");
+    try {
+      const result = await setDiscordConfig({
+        webhook_url: discordWebhookUrl.trim() || null,
+        notifications: discordNotifications,
+      });
+      setDiscordWebhookUrl(result.webhook_url ?? "");
+      setDiscordNotifications(result.notifications);
+      setDiscordEnabled(result.enabled);
+      setDiscordSaveState("saved");
+      setDiscordError("");
+      setActionMessage(result.enabled ? "Discord notification settings saved." : "Discord notifications disabled.");
+    } catch (err) {
+      setDiscordSaveState("idle");
+      setActionMessage(err instanceof Error ? err.message : "Failed saving Discord settings");
+    }
+  }
+
+  async function handleSendDiscordTest() {
+    setDiscordTestState("testing");
+    setActionMessage("");
+    try {
+      const result = await sendDiscordTest();
+      setActionMessage(result.detail);
+      setDiscordError("");
+    } catch (err) {
+      setActionMessage(err instanceof Error ? err.message : "Failed sending Discord test notification");
+    } finally {
+      setDiscordTestState("idle");
+    }
+  }
+
+  function handleDiscordNotificationToggle(key: keyof DiscordNotificationPreferences, checked: boolean) {
+    setDiscordNotifications((current) => ({
+      ...current,
+      [key]: checked,
+    }));
+    setDiscordSaveState("idle");
+  }
+
   return (
     <section className="card">
       <h2>Diagnostics</h2>
@@ -509,6 +555,7 @@ export function DiagnosticsPanel() {
       {actionMessage && <p>{actionMessage}</p>}
       {error && <p>Diagnostics unavailable: {error}</p>}
       {parityError && <p>Parity summary unavailable: {parityError}</p>}
+      {discordError && <p>Discord configuration unavailable: {discordError}</p>}
       {!error && !data && <p>Loading diagnostics...</p>}
 
       {/* STATUS TAB */}
@@ -1073,9 +1120,16 @@ export function DiagnosticsPanel() {
       {activeTab === "discord" && (
         <>
           <div className="parity-detail-card">
-            <h3>Discord Notifications</h3>
-            <p>Configure Discord webhook URL for receiving automatic notifications about forecast updates, GPU status, and pipeline health.</p>
-            
+            <div className="chart-header">
+              <h3>Discord Notifications</h3>
+              <span className={`pipeline-status-pill ${discordEnabled ? "ok" : "warn"}`}>
+                {discordEnabled ? "Configured" : "Not Configured"}
+              </span>
+            </div>
+            <p>
+              Configure a Discord webhook and choose which operational alerts should be sent automatically.
+            </p>
+
             <div className="controls-row" style={{ marginTop: 12 }}>
               <label>
                 Webhook URL
@@ -1083,24 +1137,107 @@ export function DiagnosticsPanel() {
                   type="text"
                   placeholder="https://discord.com/api/webhooks/..."
                   value={discordWebhookUrl}
-                  onChange={(event) => setDiscordWebhookUrl(event.target.value)}
+                  onChange={(event) => {
+                    setDiscordWebhookUrl(event.target.value);
+                    setDiscordSaveState("idle");
+                  }}
                   style={{ width: "100%", marginTop: 8 }}
                 />
               </label>
             </div>
+
+            <div className="discord-toggle-list">
+              <label className="discord-toggle-item">
+                <input
+                  type="checkbox"
+                  checked={discordNotifications.update_success}
+                  onChange={(event) => handleDiscordNotificationToggle("update_success", event.target.checked)}
+                />
+                <span>Forecast update completed</span>
+              </label>
+              <label className="discord-toggle-item">
+                <input
+                  type="checkbox"
+                  checked={discordNotifications.update_failure}
+                  onChange={(event) => handleDiscordNotificationToggle("update_failure", event.target.checked)}
+                />
+                <span>Forecast update failed</span>
+              </label>
+              <label className="discord-toggle-item">
+                <input
+                  type="checkbox"
+                  checked={discordNotifications.parity_alert}
+                  onChange={(event) => handleDiscordNotificationToggle("parity_alert", event.target.checked)}
+                />
+                <span>ML parity drift alert</span>
+              </label>
+              <label className="discord-toggle-item">
+                <input
+                  type="checkbox"
+                  checked={discordNotifications.gpu_alert}
+                  onChange={(event) => handleDiscordNotificationToggle("gpu_alert", event.target.checked)}
+                />
+                <span>GPU fallback or incompatibility</span>
+              </label>
+              <label className="discord-toggle-item">
+                <input
+                  type="checkbox"
+                  checked={discordNotifications.daily_digest}
+                  onChange={(event) => handleDiscordNotificationToggle("daily_digest", event.target.checked)}
+                />
+                <span>Daily forecast digest</span>
+              </label>
+              <label className="discord-toggle-item">
+                <input
+                  type="checkbox"
+                  checked={discordNotifications.pipeline_staleness}
+                  onChange={(event) => handleDiscordNotificationToggle("pipeline_staleness", event.target.checked)}
+                />
+                <span>Pipeline staleness or fallback alert</span>
+              </label>
+            </div>
+
             <div className="controls-row" style={{ marginTop: 12 }}>
               <button
                 type="button"
-                onClick={() => {
-                  setDiscordSaveState("saving");
-                  // TODO: Save webhook URL to backend
-                  setTimeout(() => setDiscordSaveState("saved"), 1000);
-                }}
+                onClick={handleSaveDiscordConfig}
                 disabled={discordSaveState === "saving"}
               >
-                {discordSaveState === "saving" ? "Saving..." : discordSaveState === "saved" ? "Saved ✓" : "Save Webhook"}
+                {discordSaveState === "saving"
+                  ? "Saving..."
+                  : discordSaveState === "saved"
+                    ? "Saved"
+                    : "Save Settings"}
+              </button>
+              <button
+                type="button"
+                onClick={handleSendDiscordTest}
+                disabled={discordTestState === "testing"}
+              >
+                {discordTestState === "testing" ? "Sending Test..." : "Send Test Notification"}
               </button>
             </div>
+          </div>
+
+          <div className="parity-detail-card">
+            <h3>Live Notification Coverage</h3>
+            <ul className="history-list">
+              <li>Update completion summary with source, record count, device used, and ML drift metrics.</li>
+              <li>Update failure alerts for both manual runs and scheduled auto-update runs.</li>
+              <li>GPU alerts when GPU is requested but the runtime falls back to CPU.</li>
+              <li>Parity drift alerts when ML candidate output exceeds notification thresholds.</li>
+              <li>Daily digest sent once per UTC day with low, high, and average next-day forecast values.</li>
+              <li>Pipeline staleness alerts when ingest falls back, retries heavily, or arrives short of the aligned horizon.</li>
+            </ul>
+          </div>
+
+          <div className="parity-detail-card">
+            <h3>Suggested Next Notifications</h3>
+            <ul className="history-list">
+              <li>Model confidence downgrade alerts when confidence drops from high to medium or low.</li>
+              <li>Scheduled market-open summary with top 3 cheapest and most expensive forecast slots.</li>
+              <li>Separate alerts for individual upstream feeds so Nordpool and weather issues are distinguishable.</li>
+            </ul>
           </div>
         </>
       )}

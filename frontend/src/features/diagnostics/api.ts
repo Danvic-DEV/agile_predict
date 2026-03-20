@@ -2,6 +2,9 @@ import { getJson, postJson } from "../../lib/api/client";
 import type {
   BootstrapForecastBundleRequest,
   BootstrapForecastBundleResponse,
+  DiscordConfigRequest,
+  DiscordConfigStatus,
+  DiscordTestResponse,
   IngestPipelineHealth,
   LatestForecastDiagnostics,
   MlGpuStatus,
@@ -31,6 +34,18 @@ export function fetchMlGpuStatus(): Promise<MlGpuStatus> {
 
 export function setMlGpuStatus(enabled: boolean): Promise<MlGpuStatus> {
   return postJson<MlGpuStatus, { enabled: boolean }>("/diagnostics/ml-gpu-status", { enabled });
+}
+
+export function fetchDiscordConfig(): Promise<DiscordConfigStatus> {
+  return getJson<DiscordConfigStatus>("/diagnostics/discord-config");
+}
+
+export function setDiscordConfig(payload: DiscordConfigRequest): Promise<DiscordConfigStatus> {
+  return postJson<DiscordConfigStatus, DiscordConfigRequest>("/diagnostics/discord-config", payload);
+}
+
+export function sendDiscordTest(): Promise<DiscordTestResponse> {
+  return postJson<DiscordTestResponse, Record<string, never>>("/diagnostics/discord-test", {});
 }
 
 export function fetchIngestPipelineHealth(): Promise<IngestPipelineHealth> {

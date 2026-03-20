@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -euo pipefail
+
 # Timestamp for logs and backup file naming
 NOW=$(date +"%Y-%m-%d_%H-%M-%S")
 
@@ -27,44 +29,23 @@ exec > >(tee -a "$LOG_FILE") 2>&1
 echo "================ $(date) ================"
 echo "Starting backup script..."
 
-# Ensure PATH includes location for fly and pg_dump
-export PATH="/home/boundys/.fly/bin:/usr/bin:/bin:$PATH"
+# Ensure PATH includes pg_dump
+export PATH="/usr/bin:/bin:$PATH"
 
-echo "APP_NAME: $APP_NAME"
-echo "LOCAL_PORT: $LOCAL_PORT"
-echo "Starting Fly proxy to database..."
+DB_HOST="${DB_HOST:-localhost}"
+DB_PORT="${DB_PORT:-5432}"
 
-# Start Fly proxy
-/home/boundys/.fly/bin/fly proxy ${LOCAL_PORT}:5432 -a $APP_NAME &
-PROXY_PID=$!
-
-# Wait for proxy to be ready
-for i in {1..10}; do
-    if nc -z localhost "$LOCAL_PORT"; then
-        echo "Proxy is ready!"
-        break
-    fi
-    echo "Waiting for proxy to be ready..."
-    sleep 1
-done
-
-# If proxy didn't start
-if ! nc -z localhost "$LOCAL_PORT"; then
-    echo "Proxy failed to start on port $LOCAL_PORT"
-    if kill -0 $PROXY_PID 2>/dev/null; then
-        kill $PROXY_PID
-    fi
-    exit 1
-fi
+echo "DB_HOST: $DB_HOST"
+echo "DB_PORT: $DB_PORT"
 
 echo "Starting backup..."
-export PGPASSWORD=$DB_PASSWORD
+export PGPASSWORD="$DB_PASSWORD"
 
 mkdir -p "$BACKUP_DIR"
 BACKUP_FILE="$BACKUP_DIR/${DB_NAME}_backup_$NOW.sql"
 LATEST_BACKUP_FILE="$BACKUP_DIR/backup.sql"
 
-/usr/bin/pg_dump -h localhost -p $LOCAL_PORT -U $DB_USER -d $DB_NAME > "$BACKUP_FILE"
+/usr/bin/pg_dump -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" > "$BACKUP_FILE"
 
 if [ $? -eq 0 ]; then
     echo "Backup completed successfully: $BACKUP_FILE"
@@ -88,11 +69,3 @@ echo "$DELETE_BACKUPS" | xargs -r rm --
 echo "$DELETE_LOGS" | xargs -r rm --
 
 echo "Old backups and logs cleaned. Keeping last $BACKUPS_TO_KEEP."
-
-# Kill proxy if still running
-if kill -0 $PROXY_PID 2>/dev/null; then
-    kill $PROXY_PID
-    echo "Proxy closed."
-else
-    echo "Proxy process already closed"
-fi

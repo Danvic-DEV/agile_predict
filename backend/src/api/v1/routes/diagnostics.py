@@ -9,11 +9,21 @@ from sqlalchemy import func, select
 
 from src.api.v1.deps import UnitOfWorkDep
 from src.api.errors import http_error
+from src.core.discord_notifications import send_discord_test_notification
+from src.core.discord_runtime_config import (
+    is_valid_discord_webhook_url,
+    read_discord_runtime_config,
+    write_discord_runtime_config,
+)
 from src.core.ml_runtime_config import read_ml_runtime_config, write_ml_runtime_config
 from src.core.update_job_state import read_last_update_job_state, read_update_job_history
 from src.ml.gpu_support import probe_xgboost_cuda
 from src.repositories.sql_models import ExternalSystemContextORM, ForecastDataORM, ForecastORM, PriceHistoryORM
 from src.schemas.diagnostics import (
+    DiscordConfigRequest,
+    DiscordConfigStatus,
+    DiscordNotificationPreferences,
+    DiscordTestResponse,
     ExternalSystemContextHealth,
     IngestPipelineHealth,
     MlGpuConfigRequest,
@@ -131,6 +141,24 @@ def _build_ml_gpu_status(*, force_test: bool = False) -> MlGpuStatus:
         reason=probe.reason,
         xgboost_version=probe.xgboost_version,
         tested_at=probe.tested_at,
+    )
+
+
+def _build_discord_config_status() -> DiscordConfigStatus:
+    config = read_discord_runtime_config()
+    notifications = config.get("notifications") or {}
+    webhook_url = str(config.get("webhook_url") or "").strip()
+    return DiscordConfigStatus(
+        enabled=bool(webhook_url),
+        webhook_url=webhook_url or None,
+        notifications=DiscordNotificationPreferences(
+            update_success=bool(notifications.get("update_success", True)),
+            update_failure=bool(notifications.get("update_failure", True)),
+            parity_alert=bool(notifications.get("parity_alert", True)),
+            gpu_alert=bool(notifications.get("gpu_alert", True)),
+            daily_digest=bool(notifications.get("daily_digest", True)),
+            pipeline_staleness=bool(notifications.get("pipeline_staleness", True)),
+        ),
     )
 
 
@@ -264,6 +292,32 @@ def ml_gpu_status() -> MlGpuStatus:
 def set_ml_gpu_status(payload: MlGpuConfigRequest) -> MlGpuStatus:
     write_ml_runtime_config(gpu_enabled=payload.enabled)
     return _build_ml_gpu_status(force_test=True)
+
+
+@router.get("/discord-config", response_model=DiscordConfigStatus)
+def discord_config() -> DiscordConfigStatus:
+    return _build_discord_config_status()
+
+
+@router.post("/discord-config", response_model=DiscordConfigStatus)
+def set_discord_config(payload: DiscordConfigRequest) -> DiscordConfigStatus:
+    webhook_url = (payload.webhook_url or "").strip()
+    if webhook_url and not is_valid_discord_webhook_url(webhook_url):
+        raise HTTPException(status_code=400, detail="Webhook URL must be a Discord webhook URL.")
+
+    write_discord_runtime_config(
+        webhook_url=webhook_url,
+        notifications=payload.notifications.model_dump(),
+    )
+    return _build_discord_config_status()
+
+
+@router.post("/discord-test", response_model=DiscordTestResponse)
+def discord_test() -> DiscordTestResponse:
+    sent, detail = send_discord_test_notification()
+    if not sent:
+        raise HTTPException(status_code=400, detail=detail)
+    return DiscordTestResponse(sent=sent, detail=detail)
 
 
 @router.get("/ingest-pipeline-health", response_model=IngestPipelineHealth)

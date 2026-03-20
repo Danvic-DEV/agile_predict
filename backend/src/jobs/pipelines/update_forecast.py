@@ -3,6 +3,15 @@ from datetime import datetime, timezone
 
 import pandas as pd
 
+from src.core.discord_notifications import (
+    PARITY_ALERT_THRESHOLDS,
+    clear_pipeline_staleness_alert_state,
+    send_daily_digest_notification,
+    send_gpu_alert_notification,
+    send_parity_alert_notification,
+    send_pipeline_staleness_alert_notification,
+    send_update_success_notification,
+)
 from src.core.ml_runtime_config import read_ml_runtime_config
 from src.core.settings import settings
 from src.core.update_job_state import write_last_update_job_state
@@ -293,5 +302,64 @@ def run_update_forecast_job(uow: UnitOfWork) -> ForecastRunResult:
         ml_device_used=ml_device_used,
         training_mode=training_mode,
     )
+
+    send_update_success_notification(
+        forecast_name=result.forecast_name,
+        source=source,
+        records_written=records_written,
+        day_ahead_points=len(day_ahead_values),
+        ml_device_used=ml_device_used,
+        training_mode=training_mode,
+        ml_compare_mae=ml_compare_mae,
+        ml_compare_p95_abs=ml_compare_p95_abs,
+        ml_compare_max_abs=ml_compare_max_abs,
+        ml_error=ml_error,
+    )
+
+    send_daily_digest_notification(
+        forecast_name=result.forecast_name,
+        source=source,
+        records_written=records_written,
+        ml_device_used=ml_device_used,
+        day_ahead_values=tuple(day_ahead_values),
+    )
+
+    if gpu_requested and not gpu_active:
+        send_gpu_alert_notification(
+            reason=gpu_probe.reason or "GPU compatibility probe failed.",
+            gpu_name=gpu_probe.gpu_name,
+        )
+
+    staleness_reasons: list[str] = []
+    if pipeline.source != "nordpool":
+        staleness_reasons.append(f"ingest source={pipeline.source}")
+    if pipeline.ingest_error:
+        staleness_reasons.append(f"ingest_error={pipeline.ingest_error}")
+    if pipeline.retries_used > 0:
+        staleness_reasons.append(f"retries_used={pipeline.retries_used}")
+    if pipeline.raw_points < len(day_ahead_values):
+        staleness_reasons.append(f"raw_points={pipeline.raw_points} aligned_points={len(day_ahead_values)}")
+
+    if staleness_reasons:
+        signature = "|".join(staleness_reasons)
+        send_pipeline_staleness_alert_notification(
+            summary="; ".join(staleness_reasons),
+            signature=signature,
+        )
+    else:
+        clear_pipeline_staleness_alert_state()
+
+    parity_threshold_hit = (
+        (ml_compare_mae is not None and ml_compare_mae > PARITY_ALERT_THRESHOLDS["mae"])
+        or (ml_compare_p95_abs is not None and ml_compare_p95_abs > PARITY_ALERT_THRESHOLDS["p95_abs"])
+        or (ml_compare_max_abs is not None and ml_compare_max_abs > PARITY_ALERT_THRESHOLDS["max_abs"])
+    )
+    if parity_threshold_hit:
+        send_parity_alert_notification(
+            forecast_name=result.forecast_name,
+            mae=ml_compare_mae,
+            p95_abs=ml_compare_p95_abs,
+            max_abs=ml_compare_max_abs,
+        )
 
     return output

@@ -56,12 +56,30 @@ Migration scaffolding has been added on the dedicated migration branch for:
 - React + Vite frontend under `frontend/`
 - Single-container packaging under `deploy/` and `.github/workflows/`
 
+Container publishing for the migration stack is handled through GitHub Container Registry (GHCR), not Fly.io or host-level shell deploys.
+
 Current runtime contract for the new app container:
 
 - Persistent configuration directory mounted at `/config`
 - First run creates `/config/.env` from `deploy/docker/default.env`
 - Embedded Postgres data persists under `/config/postgresql`
 - FastAPI serves both the API and the built React frontend
+
+GHCR image publishing:
+
+- Workflow: `.github/workflows/ghcr.yml`
+- Build source: `deploy/docker/backend.Dockerfile`
+- Registry image: `ghcr.io/<repository-owner>/agile-predict`
+- Push behavior:
+	- every branch push updates `:dev`
+	- every branch push also publishes `:sha-<short-sha>`
+	- release tags like `v2.3.0` also publish versioned tags and `major.minor`
+
+Deployment expectation:
+
+- production or staging should pull and run the published GHCR image
+- repo helper scripts under `bin/` are local or operational helpers, not the deployment mechanism
+- if you are rolling out a UI or API change, the change is live only after the target runtime pulls the new GHCR image
 
 Preferred local stack startup:
 

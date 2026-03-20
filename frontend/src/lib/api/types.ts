@@ -141,6 +141,31 @@ export interface MlGpuStatus {
   tested_at: string | null;
 }
 
+export interface DiscordNotificationPreferences {
+  update_success: boolean;
+  update_failure: boolean;
+  parity_alert: boolean;
+  gpu_alert: boolean;
+  daily_digest: boolean;
+  pipeline_staleness: boolean;
+}
+
+export interface DiscordConfigStatus {
+  enabled: boolean;
+  webhook_url: string | null;
+  notifications: DiscordNotificationPreferences;
+}
+
+export interface DiscordConfigRequest {
+  webhook_url: string | null;
+  notifications: DiscordNotificationPreferences;
+}
+
+export interface DiscordTestResponse {
+  sent: boolean;
+  detail: string;
+}
+
 export interface PipelineStageStatus {
   key: string;
   label: string;

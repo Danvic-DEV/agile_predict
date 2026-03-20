@@ -56,3 +56,4 @@ Expected result: payload includes update marker fields (`update_source`, `update
 - Confirm latest parity artifact exists at `shared/parity/last-report.json`.
 - Confirm archive entry exists under `shared/parity/history/`.
 - Save CI artifacts from `backend-tests` and `parity-gate` workflows for release notes.
+- Confirm the GHCR workflow published the expected image tags for the release candidate (`dev`, `sha-<short-sha>`, and release tags when applicable).

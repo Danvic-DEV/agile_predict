@@ -1,6 +1,16 @@
+#!/bin/bash
+
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
 date
-/home/boundys/.fly/bin/fly ssh console -C "python manage.py latest_agile" -a prices 
-date
-/home/boundys/.fly/bin/fly app restart prices
+cd "$ROOT_DIR"
+
+if [ -f "$ROOT_DIR/.venv/bin/activate" ]; then
+	. "$ROOT_DIR/.venv/bin/activate"
+fi
+
+python manage.py latest_agile
 date
 

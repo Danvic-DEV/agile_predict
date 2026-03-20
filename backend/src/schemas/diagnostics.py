@@ -104,6 +104,31 @@ class MlGpuStatus(BaseModel):
     tested_at: str | None
 
 
+class DiscordNotificationPreferences(BaseModel):
+    update_success: bool = True
+    update_failure: bool = True
+    parity_alert: bool = True
+    gpu_alert: bool = True
+    daily_digest: bool = True
+    pipeline_staleness: bool = True
+
+
+class DiscordConfigRequest(BaseModel):
+    webhook_url: str | None = None
+    notifications: DiscordNotificationPreferences
+
+
+class DiscordConfigStatus(BaseModel):
+    enabled: bool
+    webhook_url: str | None
+    notifications: DiscordNotificationPreferences
+
+
+class DiscordTestResponse(BaseModel):
+    sent: bool
+    detail: str
+
+
 class PipelineStageStatus(BaseModel):
     key: str
     label: str

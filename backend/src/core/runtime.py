@@ -4,6 +4,7 @@ import asyncio
 import logging
 from sqlalchemy import select
 
+from src.core.discord_notifications import send_update_failure_notification
 from src.core.db import SessionLocal, engine
 from src.core.settings import settings
 from src.domain.bootstrap_bundle import BootstrapBundleConfig, write_bootstrap_bundle
@@ -137,4 +138,5 @@ class AutoUpdateScheduler:
                 await asyncio.to_thread(_run_update_job_once)
                 logger.info("Auto update run completed successfully.")
             except Exception as exc:
+                send_update_failure_notification(detail=str(exc), trigger="auto")
                 logger.exception("Auto update run failed: %s", exc)
