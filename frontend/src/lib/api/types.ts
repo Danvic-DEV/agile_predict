@@ -52,6 +52,7 @@ export interface LatestForecastDiagnostics {
   update_ml_compare_max_abs: number | null;
   update_ml_compare_p95_abs: number | null;
   update_ml_write_mode: string | null;
+  update_ml_device_used: string | null;
   training_mode: boolean;
 }
 
@@ -127,6 +128,17 @@ export interface MlParityScorecard {
   confidence_percent: number;
   confidence_label: string;
   latest_error: string | null;
+}
+
+export interface MlGpuStatus {
+  enabled: boolean;
+  tested: boolean;
+  compatible: boolean;
+  active: boolean;
+  gpu_name: string | null;
+  reason: string | null;
+  xgboost_version: string | null;
+  tested_at: string | null;
 }
 
 export interface PipelineStageStatus {

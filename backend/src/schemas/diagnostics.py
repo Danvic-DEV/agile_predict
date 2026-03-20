@@ -36,6 +36,7 @@ class LatestForecastDiagnostics(BaseModel):
     update_ml_compare_max_abs: float | None
     update_ml_compare_p95_abs: float | None
     update_ml_write_mode: str | None
+    update_ml_device_used: str | None
     training_mode: bool = False
 
 
@@ -86,6 +87,21 @@ class MlParityScorecard(BaseModel):
     confidence_percent: float
     confidence_label: str
     latest_error: str | None
+
+
+class MlGpuConfigRequest(BaseModel):
+    enabled: bool
+
+
+class MlGpuStatus(BaseModel):
+    enabled: bool
+    tested: bool
+    compatible: bool
+    active: bool
+    gpu_name: str | None
+    reason: str | None
+    xgboost_version: str | None
+    tested_at: str | None
 
 
 class PipelineStageStatus(BaseModel):

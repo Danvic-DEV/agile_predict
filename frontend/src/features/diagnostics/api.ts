@@ -4,6 +4,7 @@ import type {
   BootstrapForecastBundleResponse,
   IngestPipelineHealth,
   LatestForecastDiagnostics,
+  MlGpuStatus,
   MlParityScorecard,
   ParityHistoryResponse,
   LatestParitySummary,
@@ -22,6 +23,14 @@ export function fetchMlParityScorecard(windowSize = 30): Promise<MlParityScoreca
   const params = new URLSearchParams();
   params.set("window_size", String(windowSize));
   return getJson<MlParityScorecard>(`/diagnostics/ml-parity-scorecard?${params.toString()}`);
+}
+
+export function fetchMlGpuStatus(): Promise<MlGpuStatus> {
+  return getJson<MlGpuStatus>("/diagnostics/ml-gpu-status");
+}
+
+export function setMlGpuStatus(enabled: boolean): Promise<MlGpuStatus> {
+  return postJson<MlGpuStatus, { enabled: boolean }>("/diagnostics/ml-gpu-status", { enabled });
 }
 
 export function fetchIngestPipelineHealth(): Promise<IngestPipelineHealth> {

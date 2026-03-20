@@ -9,11 +9,15 @@ from sqlalchemy import func, select
 
 from src.api.v1.deps import UnitOfWorkDep
 from src.api.errors import http_error
+from src.core.ml_runtime_config import read_ml_runtime_config, write_ml_runtime_config
 from src.core.update_job_state import read_last_update_job_state, read_update_job_history
+from src.ml.gpu_support import probe_xgboost_cuda
 from src.repositories.sql_models import ExternalSystemContextORM, ForecastDataORM, ForecastORM, PriceHistoryORM
 from src.schemas.diagnostics import (
     ExternalSystemContextHealth,
     IngestPipelineHealth,
+    MlGpuConfigRequest,
+    MlGpuStatus,
     LatestForecastDiagnostics,
     LatestParitySummary,
     MlParityScorecard,
@@ -114,6 +118,22 @@ def _source_status(last_seen: datetime | None, now: datetime) -> str:
     return "stale"
 
 
+def _build_ml_gpu_status(*, force_test: bool = False) -> MlGpuStatus:
+    config = read_ml_runtime_config()
+    enabled = bool(config.get("gpu_enabled", False))
+    probe = probe_xgboost_cuda(force=force_test)
+    return MlGpuStatus(
+        enabled=enabled,
+        tested=probe.tested,
+        compatible=probe.compatible,
+        active=enabled and probe.compatible,
+        gpu_name=probe.gpu_name,
+        reason=probe.reason,
+        xgboost_version=probe.xgboost_version,
+        tested_at=probe.tested_at,
+    )
+
+
 @router.get("/latest-summary", response_model=LatestForecastDiagnostics)
 def latest_summary(uow: UnitOfWorkDep) -> LatestForecastDiagnostics:
     latest = uow.forecasts.list_latest(limit=1)
@@ -166,6 +186,7 @@ def latest_summary(uow: UnitOfWorkDep) -> LatestForecastDiagnostics:
         update_ml_compare_max_abs=update_state.get("ml_compare_max_abs"),
         update_ml_compare_p95_abs=update_state.get("ml_compare_p95_abs"),
         update_ml_write_mode=update_state.get("ml_write_mode"),
+        update_ml_device_used=update_state.get("ml_device_used"),
         training_mode=update_state.get("training_mode", False),
     )
 
@@ -232,6 +253,17 @@ def ml_parity_scorecard(window_size: int = 30) -> MlParityScorecard:
         confidence_label=label,
         latest_error=update_state.get("ml_error"),
     )
+
+
+@router.get("/ml-gpu-status", response_model=MlGpuStatus)
+def ml_gpu_status() -> MlGpuStatus:
+    return _build_ml_gpu_status()
+
+
+@router.post("/ml-gpu-status", response_model=MlGpuStatus)
+def set_ml_gpu_status(payload: MlGpuConfigRequest) -> MlGpuStatus:
+    write_ml_runtime_config(gpu_enabled=payload.enabled)
+    return _build_ml_gpu_status(force_test=True)
 
 
 @router.get("/ingest-pipeline-health", response_model=IngestPipelineHealth)

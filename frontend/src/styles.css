@@ -178,6 +178,12 @@ body {
   margin-top: 6px;
 }
 
+.gpu-reason {
+  margin-top: 10px;
+  color: #f3c9c9;
+  font-size: 0.86rem;
+}
+
 .scorecard-header-row {
   display: flex;
   align-items: center;

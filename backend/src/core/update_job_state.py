@@ -34,6 +34,7 @@ def write_last_update_job_state(
     ml_compare_max_abs: float | None = None,
     ml_compare_p95_abs: float | None = None,
     ml_write_mode: str | None = None,
+    ml_device_used: str | None = None,
     training_mode: bool = False,
 ) -> None:
     payload: dict[str, Any] = {
@@ -58,6 +59,7 @@ def write_last_update_job_state(
         "ml_compare_max_abs": ml_compare_max_abs,
         "ml_compare_p95_abs": ml_compare_p95_abs,
         "ml_write_mode": ml_write_mode,
+        "ml_device_used": ml_device_used,
         "training_mode": training_mode,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }

@@ -3,16 +3,19 @@ import { useEffect, useState } from "react";
 import {
   fetchIngestPipelineHealth,
   fetchLatestDiagnostics,
+  fetchMlGpuStatus,
   fetchParityHistory,
   fetchLatestParitySummary,
   fetchMlParityScorecard,
   runBootstrapForecastBundle,
   runUpdateForecastJob,
+  setMlGpuStatus,
 } from "./api";
 import type {
   IngestPipelineHealth,
   LatestForecastDiagnostics,
   LatestParitySummary,
+  MlGpuStatus,
   MlParityScorecard,
   ParityHistoryItem,
 } from "../../lib/api/types";
@@ -157,6 +160,7 @@ export function DiagnosticsPanel() {
   const [data, setData] = useState<LatestForecastDiagnostics | null>(null);
   const [parity, setParity] = useState<LatestParitySummary | null>(null);
   const [scorecard, setScorecard] = useState<MlParityScorecard | null>(null);
+  const [gpuStatus, setGpuStatus] = useState<MlGpuStatus | null>(null);
   const [parityHistory, setParityHistory] = useState<ParityHistoryItem[]>([]);
   const [pipelineHealth, setPipelineHealth] = useState<IngestPipelineHealth | null>(null);
   const [error, setError] = useState("");
@@ -196,7 +200,7 @@ export function DiagnosticsPanel() {
 
   async function refreshParity() {
     try {
-      const [result, scorecardResult, parityHistoryResult, healthResult] = await Promise.all([
+      const [result, scorecardResult, parityHistoryResult, healthResult, gpuResult] = await Promise.all([
         fetchLatestParitySummary(),
         fetchMlParityScorecard(30),
         fetchParityHistory({
@@ -206,12 +210,14 @@ export function DiagnosticsPanel() {
           since: buildHistorySinceIso(),
         }),
         fetchIngestPipelineHealth(),
+        fetchMlGpuStatus(),
       ]);
       setParity(result);
       setScorecard(scorecardResult);
       setParityHistory(parityHistoryResult.items);
       setHistoryTotal(parityHistoryResult.total);
       setPipelineHealth(healthResult);
+      setGpuStatus(gpuResult);
       setParityError("");
     } catch (err) {
       setParityError(err instanceof Error ? err.message : "Failed loading parity/health summary");
@@ -235,7 +241,7 @@ export function DiagnosticsPanel() {
         setError("");
 
         try {
-          const [parityResult, scorecardResult, parityHistoryResult, healthResult] = await Promise.all([
+          const [parityResult, scorecardResult, parityHistoryResult, healthResult, gpuResult] = await Promise.all([
             fetchLatestParitySummary(),
             fetchMlParityScorecard(30),
             fetchParityHistory({
@@ -245,6 +251,7 @@ export function DiagnosticsPanel() {
               since: buildHistorySinceIso(),
             }),
             fetchIngestPipelineHealth(),
+            fetchMlGpuStatus(),
           ]);
           if (!active) {
             return;
@@ -254,6 +261,7 @@ export function DiagnosticsPanel() {
           setParityHistory(parityHistoryResult.items);
           setHistoryTotal(parityHistoryResult.total);
           setPipelineHealth(healthResult);
+          setGpuStatus(gpuResult);
           setParityError("");
         } catch (parityErr) {
           if (!active) {
@@ -424,6 +432,24 @@ export function DiagnosticsPanel() {
     }
   }
 
+  async function handleGpuToggle(enabled: boolean) {
+    setActionState("running");
+    setActionMessage("");
+    try {
+      const nextStatus = await setMlGpuStatus(enabled);
+      setGpuStatus(nextStatus);
+      setActionMessage(
+        nextStatus.active
+          ? "GPU acceleration enabled and compatible."
+          : "GPU acceleration setting saved, but compatibility test is failing. Running on CPU."
+      );
+    } catch (err) {
+      setActionMessage(err instanceof Error ? err.message : "Failed to update GPU setting");
+    } finally {
+      setActionState("idle");
+    }
+  }
+
   return (
     <section className="card">
       <h2>Diagnostics</h2>
@@ -507,6 +533,51 @@ export function DiagnosticsPanel() {
           Refresh Diagnostics
         </button>
       </div>
+      {gpuStatus && (
+        <div className="parity-detail-card">
+          <h3>ML GPU Acceleration</h3>
+          <div className="metric-grid" style={{ marginTop: 10 }}>
+            <div>
+              <span className="label">Tested</span>
+              <strong>{gpuStatus.tested ? "yes" : "no"}</strong>
+            </div>
+            <div>
+              <span className="label">Compatible</span>
+              <strong>{gpuStatus.compatible ? "yes" : "no"}</strong>
+            </div>
+            <div>
+              <span className="label">Active Device</span>
+              <strong>{gpuStatus.active ? "GPU (CUDA)" : "CPU"}</strong>
+            </div>
+            <div>
+              <span className="label">GPU Name</span>
+              <strong>{gpuStatus.gpu_name ?? "n/a"}</strong>
+            </div>
+            <div>
+              <span className="label">XGBoost</span>
+              <strong>{gpuStatus.xgboost_version ?? "n/a"}</strong>
+            </div>
+            <div>
+              <span className="label">Last Test (UTC)</span>
+              <strong>{formatIsoDate(gpuStatus.tested_at)}</strong>
+            </div>
+          </div>
+          <div className="controls-row" style={{ marginTop: 12, marginBottom: 0 }}>
+            <label>
+              GPU Training
+              <select
+                value={gpuStatus.enabled ? "enabled" : "disabled"}
+                onChange={(event) => void handleGpuToggle(event.target.value === "enabled")}
+                disabled={actionState === "running"}
+              >
+                <option value="disabled">Disabled</option>
+                <option value="enabled">Enabled</option>
+              </select>
+            </label>
+          </div>
+          {gpuStatus.reason && <p className="gpu-reason">Compatibility note: {gpuStatus.reason}</p>}
+        </div>
+      )}
       {actionMessage && <p>{actionMessage}</p>}
       {error && <p>Diagnostics unavailable: {error}</p>}
       {parityError && <p>Parity summary unavailable: {parityError}</p>}
@@ -733,6 +804,53 @@ export function DiagnosticsPanel() {
                 <div>
                   <span className="label">Latest Error</span>
                   <strong>{scorecard.latest_error ?? "none"}</strong>
+                </div>
+              </div>
+            </div>
+          )}
+          {data && (
+            <div className="parity-detail-card">
+              <h3>ML Update Job Details</h3>
+              <div className="metric-grid" style={{ marginTop: 10 }}>
+                <div>
+                  <span className="label">Device Used</span>
+                  <strong>{data.update_ml_device_used ?? "n/a"}</strong>
+                </div>
+                <div>
+                  <span className="label">Write Mode</span>
+                  <strong>{data.update_ml_write_mode ?? "n/a"}</strong>
+                </div>
+                <div>
+                  <span className="label">Training Rows</span>
+                  <strong>{data.update_ml_training_rows ?? "n/a"}</strong>
+                </div>
+                <div>
+                  <span className="label">Test Rows</span>
+                  <strong>{data.update_ml_test_rows ?? "n/a"}</strong>
+                </div>
+                <div>
+                  <span className="label">CV Mean RMSE</span>
+                  <strong>{data.update_ml_cv_mean_rmse ?? "n/a"}</strong>
+                </div>
+                <div>
+                  <span className="label">CV Stdev RMSE</span>
+                  <strong>{data.update_ml_cv_stdev_rmse ?? "n/a"}</strong>
+                </div>
+                <div>
+                  <span className="label">Candidate Points</span>
+                  <strong>{data.update_ml_candidate_points ?? "n/a"}</strong>
+                </div>
+                <div>
+                  <span className="label">Compare MAE</span>
+                  <strong>{data.update_ml_compare_mae ?? "n/a"}</strong>
+                </div>
+                <div>
+                  <span className="label">Compare Max Abs</span>
+                  <strong>{data.update_ml_compare_max_abs ?? "n/a"}</strong>
+                </div>
+                <div>
+                  <span className="label">Compare P95 Abs</span>
+                  <strong>{data.update_ml_compare_p95_abs ?? "n/a"}</strong>
                 </div>
               </div>
             </div>

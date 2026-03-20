@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 import pandas as pd
 
+from src.core.ml_runtime_config import read_ml_runtime_config
 from src.core.settings import settings
 from src.core.update_job_state import write_last_update_job_state
 from src.domain.bootstrap_bundle import (
@@ -16,6 +17,7 @@ from src.domain.forecast_pipeline import ForecastRunResult, run_forecast_pipelin
 from src.ml.ingest.grid_weather import fetch_grid_weather_features
 from src.ml.ingest.nordpool import fetch_day_ahead_prices
 from src.ml.ingest.system_context import fetch_system_context_features
+from src.ml.gpu_support import probe_xgboost_cuda
 from src.ml.parity.day_ahead_xgb import check_ml_training_readiness, run_ml_day_ahead_forecast
 from src.repositories.unit_of_work import UnitOfWork
 
@@ -56,6 +58,15 @@ def run_update_forecast_job(uow: UnitOfWork) -> ForecastRunResult:
     ml_compare_mae: float | None = None
     ml_compare_max_abs: float | None = None
     ml_compare_p95_abs: float | None = None
+    ml_device_used: str | None = None
+    gpu_config = read_ml_runtime_config()
+    gpu_requested = bool(gpu_config.get("gpu_enabled", False))
+    gpu_probe = probe_xgboost_cuda()
+    gpu_active = gpu_requested and gpu_probe.compatible
+
+    if gpu_requested and not gpu_probe.compatible:
+        gpu_reason = gpu_probe.reason or "GPU test failed"
+        ml_error = f"GPU requested but unavailable: {gpu_reason}"
 
     # Auto-enable real ML only when strict readiness checks pass.
     configured_ml_write_mode = settings.ml_write_mode
@@ -72,9 +83,11 @@ def run_update_forecast_job(uow: UnitOfWork) -> ForecastRunResult:
                 uow=uow,
                 point_count=len(day_ahead_values),
                 bridge_day_ahead_values=deterministic_values,
+                use_gpu=gpu_active,
             )
         except Exception as exc:
             ml_error = str(exc)
+            ml_device_used = "cpu"  # Fallback to cpu on error
             if auto_enable_ml:
                 # Stay in training mode until ML can run successfully.
                 ml_write_mode = "deterministic"
@@ -92,6 +105,7 @@ def run_update_forecast_job(uow: UnitOfWork) -> ForecastRunResult:
                 source = pipeline.source
         else:
             ml_candidate_points = len(ml_output.day_ahead_values)
+            ml_device_used = "gpu" if gpu_active else "cpu"
 
             ml_training_rows = ml_output.training_rows
             ml_test_rows = ml_output.test_rows
@@ -115,6 +129,7 @@ def run_update_forecast_job(uow: UnitOfWork) -> ForecastRunResult:
                 day_ahead_high_values = None
                 source = f"shadow:{pipeline.source}"
     else:
+        ml_device_used = "cpu"  # Deterministic pipeline uses cpu
         day_ahead_values = deterministic_values
         day_ahead_low_values = None
         day_ahead_high_values = None
@@ -275,6 +290,7 @@ def run_update_forecast_job(uow: UnitOfWork) -> ForecastRunResult:
         ml_compare_max_abs=ml_compare_max_abs,
         ml_compare_p95_abs=ml_compare_p95_abs,
         ml_write_mode=ml_write_mode,
+        ml_device_used=ml_device_used,
         training_mode=training_mode,
     )
 

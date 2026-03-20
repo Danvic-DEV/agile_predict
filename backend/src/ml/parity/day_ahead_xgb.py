@@ -212,6 +212,7 @@ def run_ml_day_ahead_forecast(
     bridge_day_ahead_values: tuple[float, ...] | None = None,
     max_days: int = 60,
     no_ranges: bool = False,
+    use_gpu: bool = False,
 ) -> MlParityForecastOutput:
     forecasts = uow.session.execute(select(ForecastORM).order_by(ForecastORM.created_at.asc())).scalars().all()
     if len(forecasts) < 2:
@@ -276,6 +277,13 @@ def run_ml_day_ahead_forecast(
     train_x = train_df.astype(float)
     sample_weights = ((np.log10((train_y - train_y.mean()).abs() + 10) * 5) - 4).round(0)
 
+    model_kwargs: dict[str, str] = {}
+    if use_gpu:
+        model_kwargs = {
+            "tree_method": "hist",
+            "device": "cuda",
+        }
+
     model = xg.XGBRegressor(
         objective="reg:squarederror",
         booster="dart",
@@ -284,6 +292,7 @@ def run_ml_day_ahead_forecast(
         n_estimators=200,
         max_depth=10,
         colsample_bytree=1,
+        **model_kwargs,
     )
 
     scores: np.ndarray | None = None
