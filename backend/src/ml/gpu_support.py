@@ -73,7 +73,7 @@ def probe_xgboost_cuda(*, force: bool = False, ttl_seconds: int = 120) -> GpuPro
             device="cuda",
         )
         model.fit(x, y, verbose=False)
-        _ = model.predict(x)
+        _ = model.get_booster().predict(xg.DMatrix(x))
 
         result = GpuProbeResult(
             tested=True,
