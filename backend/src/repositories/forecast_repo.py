@@ -65,8 +65,10 @@ class ForecastRepository:
             if forecast_prices:
                 now_utc = datetime.now(timezone.utc)
                 horizon_end = now_utc + timedelta(days=days)
-                # Only expose operational slots for the forward horizon.
-                forecast_prices = [p for p in forecast_prices if now_utc <= p.date_time <= horizon_end]
+                # Include 2 days of past slots so released Agile actuals are visible,
+                # plus the full forward horizon for prediction comparison.
+                lookback_start = now_utc - timedelta(days=2)
+                forecast_prices = [p for p in forecast_prices if lookback_start <= p.date_time <= horizon_end]
 
             forecast_name = forecast.name
             if region is not None:

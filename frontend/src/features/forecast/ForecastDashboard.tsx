@@ -199,8 +199,8 @@ function formatDelta(slot: AgilePricePoint): string {
 export function ForecastDashboard() {
   const [forecasts, setForecasts] = useState<ForecastSummary[]>([]);
   const [prices, setPrices] = useState<ForecastWithPrices[]>([]);
-  const [regions, setRegions] = useState<string[]>(["ALL"]);
-  const [selectedRegion, setSelectedRegion] = useState("ALL");
+  const [regions, setRegions] = useState<string[]>(["B"]);
+  const [selectedRegion, setSelectedRegion] = useState("B");
   const [days, setDays] = useState(7);
   const [forecastCount, setForecastCount] = useState(1);
   const [state, setState] = useState<LoadState>("idle");
@@ -217,7 +217,7 @@ export function ForecastDashboard() {
       try {
         const [f, p, r] = await Promise.all([
           fetchForecasts(5),
-          fetchForecastPrices(selectedRegion === "ALL" ? "" : selectedRegion, days, forecastCount),
+          fetchForecastPrices(selectedRegion, days, forecastCount),
           fetchRegions(),
         ]);
         if (!active) {
@@ -225,10 +225,9 @@ export function ForecastDashboard() {
         }
         setForecasts(f);
         setPrices(p);
-        const options = ["ALL", ...r];
-        setRegions(options);
-        if (!options.includes(selectedRegion)) {
-          setSelectedRegion("ALL");
+        setRegions(r);
+        if (!r.includes(selectedRegion)) {
+          setSelectedRegion(r[0] ?? "B");
         }
         setCustomerForecastStatus("available");
         setState("loaded");
@@ -406,7 +405,7 @@ export function ForecastDashboard() {
                 </div>
                 <div>
                   <span className="label">Region</span>
-                  <strong>{selectedRegion === "ALL" ? "All Regions" : selectedRegion}</strong>
+                  <strong>{selectedRegion}</strong>
                 </div>
               </div>
               <div className="chart-card">
