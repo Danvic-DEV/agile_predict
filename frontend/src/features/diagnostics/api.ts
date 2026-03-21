@@ -48,6 +48,10 @@ export function sendDiscordTest(): Promise<DiscordTestResponse> {
   return postJson<DiscordTestResponse, Record<string, never>>("/diagnostics/discord-test", {});
 }
 
+export function fetchFeedHealth(): Promise<Record<string, unknown>> {
+  return getJson<Record<string, unknown>>("/diagnostics/feed-health");
+}
+
 export function fetchIngestPipelineHealth(): Promise<IngestPipelineHealth> {
   return getJson<IngestPipelineHealth>("/diagnostics/ingest-pipeline-health");
 }

@@ -12,6 +12,16 @@ from django.core.management import call_command
 
 from prices.models import History, PriceHistory, Forecasts, ForecastData, AgileData
 
+# Feed health tracking
+try:
+    from src.core.feed_health import record_feed_error, record_feed_success
+except ImportError:
+    # Fallback if running in legacy Django context only
+    def record_feed_success(*args, **kwargs):
+        pass
+    def record_feed_error(*args, **kwargs):
+        pass
+
 OCTOPUS_PRODUCT_URL = r"https://api.octopus.energy/v1/products/"
 
 
@@ -497,32 +507,39 @@ def get_agile(start=pd.Timestamp("2023-07-01"), tz="GB", region="G"):
     product = "AGILE-24-10-01"
     df = pd.DataFrame()
     url = f"{OCTOPUS_PRODUCT_URL}{product}"
+    source_id = f"agile_octopus_{region}"
 
-    end = pd.Timestamp.now(tz="UTC").normalize() + pd.Timedelta("48h")
-    code = f"E-1R-{product}-{region}"
-    url = url + f"/electricity-tariffs/{code}/standard-unit-rates/"
+    try:
+        end = pd.Timestamp.now(tz="UTC").normalize() + pd.Timedelta("48h")
+        code = f"E-1R-{product}-{region}"
+        url = url + f"/electricity-tariffs/{code}/standard-unit-rates/"
 
-    x = []
-    while end > start:
-        # print(start, end)
-        params = {
-            "page_size": 1500,
-            "order_by": "period",
-            "period_from": _oct_time(start),
-            "period_to": _oct_time(end),
-        }
+        x = []
+        while end > start:
+            # print(start, end)
+            params = {
+                "page_size": 1500,
+                "order_by": "period",
+                "period_from": _oct_time(start),
+                "period_to": _oct_time(end),
+            }
 
-        r = requests.get(url, params=params)
-        if "results" in r.json():
-            x = x + r.json()["results"]
-        end = pd.Timestamp(x[-1]["valid_from"]).ceil("24h")
+            r = requests.get(url, params=params)
+            if "results" in r.json():
+                x = x + r.json()["results"]
+            end = pd.Timestamp(x[-1]["valid_from"]).ceil("24h")
 
-    df = pd.DataFrame(x).set_index("valid_from")[["value_inc_vat"]]
-    df.index = pd.to_datetime(df.index)
-    df.index = df.index.tz_convert(tz)
-    df = df.sort_index()["value_inc_vat"]
-    df = df[~df.index.duplicated()]
-    return df.rename("agile")
+        df = pd.DataFrame(x).set_index("valid_from")[["value_inc_vat"]]
+        df.index = pd.to_datetime(df.index)
+        df.index = df.index.tz_convert(tz)
+        df = df.sort_index()["value_inc_vat"]
+        df = df[~df.index.duplicated()]
+        result = df.rename("agile")
+        record_feed_success(source_id, records_received=len(result))
+        return result
+    except Exception as exc:
+        record_feed_error(source_id, str(exc))
+        raise
 
 
 def day_ahead_to_agile(df, reverse=False, region="G"):

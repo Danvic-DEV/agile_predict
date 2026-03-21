@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import {
   fetchDiscordConfig,
+  fetchFeedHealth,
   fetchIngestPipelineHealth,
   fetchLatestDiagnostics,
   fetchMlGpuStatus,
@@ -159,7 +160,7 @@ function buildSparklinePath(values: number[], width = 360, height = 90, padding 
     .join(" ");
 }
 
-type TabKey = "status" | "ml-model" | "gpu" | "pipeline" | "controls" | "discord";
+type TabKey = "status" | "ml-model" | "gpu" | "pipeline" | "controls" | "discord" | "feed-health";
 
 const DEFAULT_DISCORD_NOTIFICATIONS: DiscordNotificationPreferences = {
   update_started: true,
@@ -180,6 +181,7 @@ export function DiagnosticsPanel() {
   const [gpuStatus, setGpuStatus] = useState<MlGpuStatus | null>(null);
   const [parityHistory, setParityHistory] = useState<ParityHistoryItem[]>([]);
   const [pipelineHealth, setPipelineHealth] = useState<IngestPipelineHealth | null>(null);
+  const [feedHealth, setFeedHealth] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState("");
   const [parityError, setParityError] = useState("");
   const [actionState, setActionState] = useState<"idle" | "running">("idle");
@@ -226,7 +228,7 @@ export function DiagnosticsPanel() {
 
   async function refreshParity() {
     try {
-      const [result, scorecardResult, parityHistoryResult, healthResult, gpuResult] = await Promise.all([
+      const [result, scorecardResult, parityHistoryResult, healthResult, gpuResult, feedHealthResult] = await Promise.all([
         fetchLatestParitySummary(),
         fetchMlParityScorecard(30),
         fetchParityHistory({
@@ -237,6 +239,7 @@ export function DiagnosticsPanel() {
         }),
         fetchIngestPipelineHealth(),
         fetchMlGpuStatus(),
+        fetchFeedHealth(),
       ]);
       setParity(result);
       setScorecard(scorecardResult);
@@ -244,6 +247,7 @@ export function DiagnosticsPanel() {
       setHistoryTotal(parityHistoryResult.total);
       setPipelineHealth(healthResult);
       setGpuStatus(gpuResult);
+      setFeedHealth(feedHealthResult);
       setParityError("");
     } catch (err) {
       setParityError(err instanceof Error ? err.message : "Failed loading parity/health summary");
@@ -555,6 +559,13 @@ export function DiagnosticsPanel() {
           onClick={() => setActiveTab("discord")}
         >
           Discord
+        </button>
+        <button
+          type="button"
+          className={`tab-button ${activeTab === "feed-health" ? "active" : ""}`}
+          onClick={() => setActiveTab("feed-health")}
+        >
+          Feed Health
         </button>
       </div>
 
@@ -1258,6 +1269,185 @@ export function DiagnosticsPanel() {
               <li>Separate alerts for individual upstream feeds so Nordpool and weather issues are distinguishable.</li>
             </ul>
           </div>
+        </>
+      )}
+
+      {/* FEED HEALTH TAB */}
+      {activeTab === "feed-health" && (
+        <>
+          <div className="parity-detail-card">
+            <div className="chart-header">
+              <h3>External Feed Health</h3>
+              <span className="pipeline-status-pill ok">Real-time Monitoring</span>
+            </div>
+            <p>
+              Status of all upstream data sources. Use this to identify which feed is broken when forecasts fail.
+            </p>
+          </div>
+
+          {feedHealth && (
+            <>
+              {/* Agile Regions Group */}
+              <div className="parity-detail-card">
+                <h3>Agile UK Tariff (Octopus Energy)</h3>
+                <div className="feed-group">
+                  {Object.entries(feedHealth)
+                    .filter(([id]) => id.startsWith("agile_"))
+                    .map(([id, data]) => {
+                      const entry = data as any;
+                      const statusClass = entry.status === "healthy" ? "ok" : entry.status === "stale" ? "warn" : "error";
+                      return (
+                        <div key={id} className={`feed-item feed-${statusClass}`}>
+                          <div className="feed-name">{entry.name}</div>
+                          <div className="feed-details">
+                            <span className={`feed-status feed-status-${statusClass}`}>{entry.status.toUpperCase()}</span>
+                            {entry.last_successful_pull && (
+                              <span className="feed-timestamp">Last: {formatUpdateRelativeTime(entry.last_successful_pull, nowMs)}</span>
+                            )}
+                            {entry.records_received > 0 && (
+                              <span className="feed-count">{entry.records_received} records</span>
+                            )}
+                            {entry.last_error && (
+                              <span className="feed-error" title={entry.last_error}>
+                                Error: {entry.last_error.substring(0, 40)}...
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+
+              {/* Day-Ahead Prices */}
+              <div className="parity-detail-card">
+                <h3>Day-Ahead Prices (Nordpool/N2EX)</h3>
+                <div className="feed-group">
+                  {Object.entries(feedHealth)
+                    .filter(([id]) => id.startsWith("nordpool_"))
+                    .map(([id, data]) => {
+                      const entry = data as any;
+                      const statusClass = entry.status === "healthy" ? "ok" : entry.status === "stale" ? "warn" : "error";
+                      return (
+                        <div key={id} className={`feed-item feed-${statusClass}`}>
+                          <div className="feed-name">{entry.name}</div>
+                          <div className="feed-details">
+                            <span className={`feed-status feed-status-${statusClass}`}>{entry.status.toUpperCase()}</span>
+                            {entry.last_successful_pull && (
+                              <span className="feed-timestamp">Last: {formatUpdateRelativeTime(entry.last_successful_pull, nowMs)}</span>
+                            )}
+                            {entry.records_received > 0 && (
+                              <span className="feed-count">{entry.records_received} records</span>
+                            )}
+                            {entry.last_error && (
+                              <span className="feed-error" title={entry.last_error}>
+                                Error: {entry.last_error.substring(0, 40)}...
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+
+              {/* Weather */}
+              <div className="parity-detail-card">
+                <h3>Weather Data (Open-Meteo)</h3>
+                <div className="feed-group">
+                  {Object.entries(feedHealth)
+                    .filter(([id]) => id.startsWith("weather_"))
+                    .map(([id, data]) => {
+                      const entry = data as any;
+                      const statusClass = entry.status === "healthy" ? "ok" : entry.status === "stale" ? "warn" : "error";
+                      return (
+                        <div key={id} className={`feed-item feed-${statusClass}`}>
+                          <div className="feed-name">{entry.name}</div>
+                          <div className="feed-details">
+                            <span className={`feed-status feed-status-${statusClass}`}>{entry.status.toUpperCase()}</span>
+                            {entry.last_successful_pull && (
+                              <span className="feed-timestamp">Last: {formatUpdateRelativeTime(entry.last_successful_pull, nowMs)}</span>
+                            )}
+                            {entry.records_received > 0 && (
+                              <span className="feed-count">{entry.records_received} records</span>
+                            )}
+                            {entry.last_error && (
+                              <span className="feed-error" title={entry.last_error}>
+                                Error: {entry.last_error.substring(0, 40)}...
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+
+              {/* NESO Grid Data */}
+              <div className="parity-detail-card">
+                <h3>NESO Grid Data (UK)</h3>
+                <div className="feed-group">
+                  {Object.entries(feedHealth)
+                    .filter(([id]) => id.startsWith("neso_"))
+                    .map(([id, data]) => {
+                      const entry = data as any;
+                      const statusClass = entry.status === "healthy" ? "ok" : entry.status === "stale" ? "warn" : "error";
+                      return (
+                        <div key={id} className={`feed-item feed-${statusClass}`}>
+                          <div className="feed-name">{entry.name}</div>
+                          <div className="feed-details">
+                            <span className={`feed-status feed-status-${statusClass}`}>{entry.status.toUpperCase()}</span>
+                            {entry.last_successful_pull && (
+                              <span className="feed-timestamp">Last: {formatUpdateRelativeTime(entry.last_successful_pull, nowMs)}</span>
+                            )}
+                            {entry.records_received > 0 && (
+                              <span className="feed-count">{entry.records_received} records</span>
+                            )}
+                            {entry.last_error && (
+                              <span className="feed-error" title={entry.last_error}>
+                                Error: {entry.last_error.substring(0, 40)}...
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+
+              {/* Elexon BMRS Fallback */}
+              <div className="parity-detail-card">
+                <h3>Elexon BMRS Fallback Sources</h3>
+                <div className="feed-group">
+                  {Object.entries(feedHealth)
+                    .filter(([id]) => id.startsWith("elexon_"))
+                    .map(([id, data]) => {
+                      const entry = data as any;
+                      const statusClass = entry.status === "healthy" ? "ok" : entry.status === "stale" ? "warn" : "error";
+                      return (
+                        <div key={id} className={`feed-item feed-${statusClass}`}>
+                          <div className="feed-name">{entry.name}</div>
+                          <div className="feed-details">
+                            <span className={`feed-status feed-status-${statusClass}`}>{entry.status.toUpperCase()}</span>
+                            {entry.last_successful_pull && (
+                              <span className="feed-timestamp">Last: {formatUpdateRelativeTime(entry.last_successful_pull, nowMs)}</span>
+                            )}
+                            {entry.records_received > 0 && (
+                              <span className="feed-count">{entry.records_received} records</span>
+                            )}
+                            {entry.last_error && (
+                              <span className="feed-error" title={entry.last_error}>
+                                Error: {entry.last_error.substring(0, 40)}...
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            </>
+          )}
         </>
       )}
     </section>

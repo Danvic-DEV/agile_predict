@@ -15,6 +15,7 @@ from src.core.discord_runtime_config import (
     read_discord_runtime_config,
     write_discord_runtime_config,
 )
+from src.core.feed_health import get_feed_health
 from src.core.ml_runtime_config import read_ml_runtime_config, write_ml_runtime_config
 from src.core.update_job_state import read_last_update_job_state, read_update_job_history
 from src.ml.gpu_support import probe_xgboost_cuda
@@ -633,3 +634,17 @@ def parity_history(
         offset=bounded_offset,
         returned=len(paged_items),
     )
+
+
+@router.get("/feed-health")
+def get_current_feed_health() -> dict:
+    """Get health status for all external data feed sources.
+    
+    Returns per-feed metadata including:
+    - last_successful_pull: when the feed last successfully ingested
+    - records_received: count of records on last successful pull
+    - status: 'healthy' | 'stale' | 'error' | 'unknown'
+    - last_error: most recent error message, if any
+    - error_count: total error count
+    """
+    return get_feed_health()

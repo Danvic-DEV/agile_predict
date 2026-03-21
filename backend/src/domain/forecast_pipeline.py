@@ -6,6 +6,7 @@ import time
 
 import pandas as pd
 
+from src.core.feed_health import record_feed_error, record_feed_success
 from src.core.settings import settings
 from src.ml.features import add_time_features
 from src.ml.ingest import fetch_day_ahead_prices
@@ -59,13 +60,14 @@ def _ingest_stage(
                 idx = idx.tz_convert("UTC")
 
             series = pd.Series(index=idx, data=[float(v) for _, v in sorted_points], dtype=float, name="day_ahead")
+            record_feed_success("nordpool_da", records_received=len(series))
             return series, "nordpool", None, attempt, len(series)
         except Exception as exc:
             last_error = str(exc)
             if attempt < max_attempts - 1:
                 time.sleep(retry_backoff_seconds * (attempt + 1))
 
-    if settings.allow_ingest_fallback:
+    record_feed_error("nordpool_da", last_error or "unknown error")    if settings.allow_ingest_fallback:
         fallback = _fallback_day_ahead_series(points=fallback_points)
         return fallback, "fallback", last_error, max_attempts - 1, len(fallback)
 
