@@ -48,6 +48,22 @@ def _diff_metrics(reference: tuple[float, ...], candidate: tuple[float, ...]) ->
     return float(mae), float(max_abs), float(p95)
 
 
+def _zero_ratio(values: tuple[float, ...], *, epsilon: float = 1e-6) -> float:
+    if not values:
+        return 0.0
+    zeros = sum(1 for value in values if abs(float(value)) <= epsilon)
+    return float(zeros) / float(len(values))
+
+
+def _is_degenerate_ml_output(values: tuple[float, ...]) -> bool:
+    if not values:
+        return True
+    unique_rounded = len({round(float(value), 4) for value in values})
+    if unique_rounded <= 2:
+        return True
+    return _zero_ratio(values) >= 0.95
+
+
 def run_update_forecast_job(uow: UnitOfWork) -> ForecastRunResult:
     pipeline = run_forecast_pipeline(fallback_points=settings.auto_bootstrap_points)
     deterministic_values = pipeline.day_ahead_values
@@ -128,10 +144,20 @@ def run_update_forecast_job(uow: UnitOfWork) -> ForecastRunResult:
                 ml_compare_mae, ml_compare_max_abs, ml_compare_p95_abs = diffs
 
             if ml_write_mode == "ml":
-                day_ahead_values = ml_output.day_ahead_values
-                day_ahead_low_values = ml_output.day_ahead_low_values
-                day_ahead_high_values = ml_output.day_ahead_high_values
-                source = "ml"
+                if _is_degenerate_ml_output(ml_output.day_ahead_values):
+                    ml_error = (
+                        f"ML output rejected as degenerate: zero_ratio={_zero_ratio(ml_output.day_ahead_values):.1%}, "
+                        f"points={len(ml_output.day_ahead_values)}"
+                    )
+                    day_ahead_values = deterministic_values
+                    day_ahead_low_values = None
+                    day_ahead_high_values = None
+                    source = pipeline.source
+                else:
+                    day_ahead_values = ml_output.day_ahead_values
+                    day_ahead_low_values = ml_output.day_ahead_low_values
+                    day_ahead_high_values = ml_output.day_ahead_high_values
+                    source = "ml"
             else:
                 day_ahead_values = deterministic_values
                 day_ahead_low_values = None

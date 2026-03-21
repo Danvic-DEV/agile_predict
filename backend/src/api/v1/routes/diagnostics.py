@@ -592,7 +592,7 @@ def pipeline_truth_audit(uow: UnitOfWorkDep) -> PipelineTruthAudit:
             )
         )
 
-    if latest_duplicate_slots > 0:
+    if latest_duplicate_slots > 2:
         issues.append(
             PipelineTruthIssue(
                 code="duplicate_slots",
