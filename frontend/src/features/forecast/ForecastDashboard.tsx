@@ -10,27 +10,129 @@ type CustomerForecastStatus = "available" | "disabled";
 
 const CHART_WIDTH = 720;
 const CHART_HEIGHT = 240;
-const CHART_PADDING = 24;
+const CHART_MARGIN = {
+  top: 16,
+  right: 18,
+  bottom: 36,
+  left: 62,
+};
 
-function buildChartPath(points: AgilePricePoint[]): string {
+type ChartTick = {
+  value: number;
+  y: number;
+};
+
+type MidnightMarker = {
+  x: number;
+  label: string;
+};
+
+type ChartModel = {
+  predPath: string;
+  bandPath: string;
+  yTicks: ChartTick[];
+  midnightMarkers: MidnightMarker[];
+};
+
+function toLondonTimeParts(dateTime: string): Record<string, string> {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Europe/London",
+  }).formatToParts(new Date(dateTime));
+
+  return parts.reduce<Record<string, string>>((acc, part) => {
+    if (part.type !== "literal") {
+      acc[part.type] = part.value;
+    }
+    return acc;
+  }, {});
+}
+
+function isLondonMidnight(dateTime: string): boolean {
+  const parts = toLondonTimeParts(dateTime);
+  return parts.hour === "00" && parts.minute === "00";
+}
+
+function buildChartModel(points: AgilePricePoint[]): ChartModel {
   if (points.length === 0) {
-    return "";
+    return {
+      predPath: "",
+      bandPath: "",
+      yTicks: [],
+      midnightMarkers: [],
+    };
   }
 
-  const values = points.map((point) => point.agile_pred);
+  const lows = points.map((point) => point.agile_low ?? point.agile_pred);
+  const highs = points.map((point) => point.agile_high ?? point.agile_pred);
+  const values = [...lows, ...highs, ...points.map((point) => point.agile_pred)];
   const minValue = Math.min(...values);
   const maxValue = Math.max(...values);
-  const valueRange = Math.max(maxValue - minValue, 0.0001);
-  const width = CHART_WIDTH - CHART_PADDING * 2;
-  const height = CHART_HEIGHT - CHART_PADDING * 2;
+  const range = Math.max(maxValue - minValue, 1);
+  const paddedMin = minValue - range * 0.08;
+  const paddedMax = maxValue + range * 0.08;
+  const tickStep = 5;
+  const tickStart = Math.floor(paddedMin / tickStep) * tickStep;
+  const tickEnd = Math.ceil(paddedMax / tickStep) * tickStep;
+  const axisMin = tickStart;
+  const axisMax = tickEnd > tickStart ? tickEnd : tickStart + tickStep;
+  const axisRange = Math.max(axisMax - axisMin, 0.0001);
+  const width = CHART_WIDTH - CHART_MARGIN.left - CHART_MARGIN.right;
+  const height = CHART_HEIGHT - CHART_MARGIN.top - CHART_MARGIN.bottom;
 
-  return points
+  const scaleX = (index: number) => CHART_MARGIN.left + (index / Math.max(points.length - 1, 1)) * width;
+  const scaleY = (value: number) => CHART_MARGIN.top + ((axisMax - value) / axisRange) * height;
+
+  const predPath = points
     .map((point, index) => {
-      const x = CHART_PADDING + (index / Math.max(points.length - 1, 1)) * width;
-      const y = CHART_HEIGHT - CHART_PADDING - ((point.agile_pred - minValue) / valueRange) * height;
+      const x = scaleX(index);
+      const y = scaleY(point.agile_pred);
       return `${index === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
     })
     .join(" ");
+
+  const highPath = points
+    .map((point, index) => `L${scaleX(index).toFixed(2)},${scaleY(point.agile_high ?? point.agile_pred).toFixed(2)}`)
+    .join(" ");
+  const lowPath = points
+    .slice()
+    .reverse()
+    .map(
+      (point, reverseIndex) =>
+        `L${scaleX(points.length - reverseIndex - 1).toFixed(2)},${scaleY(point.agile_low ?? point.agile_pred).toFixed(2)}`,
+    )
+    .join(" ");
+  const bandPath = `M${scaleX(0).toFixed(2)},${scaleY(points[0].agile_high ?? points[0].agile_pred).toFixed(2)} ${highPath} ${lowPath} Z`;
+
+  const yTicks: ChartTick[] = [];
+  for (let value = tickEnd; value >= tickStart; value -= tickStep) {
+    yTicks.push({
+      value,
+      y: scaleY(value),
+    });
+  }
+
+  const midnightMarkers = points
+    .map((point, index) => ({ point, index }))
+    .filter(({ point }) => isLondonMidnight(point.date_time))
+    .map(({ point, index }) => {
+      const parts = toLondonTimeParts(point.date_time);
+      return {
+        x: scaleX(index),
+        label: `${parts.day} ${parts.month}`,
+      };
+    });
+
+  return {
+    predPath,
+    bandPath,
+    yTicks,
+    midnightMarkers,
+  };
 }
 
 function formatSlotLabel(dateTime: string): string {
@@ -115,7 +217,7 @@ export function ForecastDashboard() {
       avg: total / values.length,
       firstSlot: latest.prices[0],
       lastSlot: latest.prices[latest.prices.length - 1],
-      chartPath: buildChartPath(latest.prices),
+      chart: buildChartModel(latest.prices),
       recentSlots: latest.prices.slice(0, 10),
     };
   }, [latest]);
@@ -222,9 +324,67 @@ export function ForecastDashboard() {
                   <h3>Latest Agile Prediction Curve</h3>
                   <span>{latest.prices.length} half-hour slots</span>
                 </div>
-                <svg viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`} className="forecast-chart" role="img" aria-label="Latest agile price forecast chart">
-                  <path d={latestSummary.chartPath} className="forecast-chart-line" />
+                <svg
+                  viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
+                  className="forecast-chart"
+                  role="img"
+                  aria-label="Latest agile prediction with min-max range and midnight day markers"
+                >
+                  {latestSummary.chart.yTicks.map((tick) => (
+                    <g key={tick.y.toFixed(2)}>
+                      <line
+                        x1={CHART_MARGIN.left}
+                        y1={tick.y}
+                        x2={CHART_WIDTH - CHART_MARGIN.right}
+                        y2={tick.y}
+                        className="forecast-chart-gridline"
+                      />
+                      <text x={CHART_MARGIN.left - 8} y={tick.y + 4} textAnchor="end" className="forecast-chart-axis-text">
+                        {tick.value.toFixed(0)}
+                      </text>
+                    </g>
+                  ))}
+                  {latestSummary.chart.midnightMarkers.map((marker) => (
+                    <g key={`${marker.x}-${marker.label}`}>
+                      <line
+                        x1={marker.x}
+                        y1={CHART_MARGIN.top}
+                        x2={marker.x}
+                        y2={CHART_HEIGHT - CHART_MARGIN.bottom}
+                        className="forecast-chart-midnight"
+                      />
+                      <text
+                        x={marker.x}
+                        y={CHART_HEIGHT - 10}
+                        textAnchor="middle"
+                        className="forecast-chart-midnight-label"
+                      >
+                        {marker.label}
+                      </text>
+                    </g>
+                  ))}
+                  <path d={latestSummary.chart.bandPath} className="forecast-chart-band" />
+                  <path d={latestSummary.chart.predPath} className="forecast-chart-line" />
+                  <text
+                    x={CHART_MARGIN.left - 8}
+                    y={CHART_MARGIN.top - 2}
+                    textAnchor="end"
+                    className="forecast-chart-axis-title"
+                  >
+                    p/kWh
+                  </text>
                 </svg>
+                <div className="chart-legend" aria-hidden="true">
+                  <span className="legend-item">
+                    <span className="legend-swatch legend-swatch-line" />
+                    Pred
+                  </span>
+                  <span className="legend-item">
+                    <span className="legend-swatch legend-swatch-band" />
+                    Min-Max
+                  </span>
+                  <span className="legend-item legend-item-midnight">Midnight markers show day boundaries</span>
+                </div>
               </div>
               <div className="table-card">
                 <div className="chart-header">

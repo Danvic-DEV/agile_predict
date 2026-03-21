@@ -567,6 +567,77 @@ body {
   stroke-linejoin: round;
 }
 
+.forecast-chart-band {
+  fill: rgba(242, 184, 75, 0.2);
+  stroke: none;
+}
+
+.forecast-chart-gridline {
+  stroke: rgba(201, 214, 220, 0.2);
+  stroke-width: 1;
+}
+
+.forecast-chart-midnight {
+  stroke: rgba(107, 210, 255, 0.5);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+}
+
+.forecast-chart-axis-text,
+.forecast-chart-axis-title,
+.forecast-chart-midnight-label {
+  fill: #9eb2be;
+  font-size: 11px;
+  letter-spacing: 0.01em;
+}
+
+.forecast-chart-axis-title {
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.forecast-chart-midnight-label {
+  fill: #c1d4df;
+  font-size: 10px;
+}
+
+.chart-legend {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 0.78rem;
+  color: #b8c9d2;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-swatch {
+  width: 16px;
+  height: 8px;
+  border-radius: 2px;
+  border: 1px solid rgba(201, 214, 220, 0.35);
+}
+
+.legend-swatch-line {
+  height: 0;
+  border: 0;
+  border-top: 3px solid #f2b84b;
+  width: 16px;
+}
+
+.legend-swatch-band {
+  background: rgba(242, 184, 75, 0.2);
+}
+
+.legend-item-midnight {
+  color: #9eb2be;
+}
+
 .slot-table {
   width: 100%;
   border-collapse: collapse;
