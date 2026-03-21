@@ -108,7 +108,8 @@ def _neso_sql(resource_id: str, where_clause: str, limit: int = 40000) -> pd.Dat
 
 
 def _fetch_neso_demand(start_date: str) -> pd.Series:
-    """INDO dataset: actual demand (last 28d via Elexon, falls back to NESO)."""
+    """Demand series using INDO actuals plus NDF future forecast when available."""
+    actual_series = pd.Series(dtype=float)
     try:
         url = "https://data.elexon.co.uk/bmrs/api/v1/datasets/INDO"
         params = {
@@ -130,10 +131,47 @@ def _fetch_neso_demand(start_date: str) -> pd.Series:
             validation_issues=issues,
             validation_metrics=metrics,
         )
-        return df["demand"]
+        actual_series = df["demand"]
     except Exception as exc:  # noqa: BLE001
         record_feed_error("elexon_indo", str(exc))
         log.warning("Elexon INDO failed, trying NESO: %s", exc)
+
+    forecast_series = pd.Series(dtype=float)
+    try:
+        data = _retry(lambda: _get_json("https://data.elexon.co.uk/bmrs/api/v1/datasets/NDF", {"format": "json"}))
+        df = pd.DataFrame(data.get("data", []))
+        if not df.empty:
+            df["publishTime"] = pd.to_datetime(df["publishTime"], utc=True)
+            df["startTime"] = pd.to_datetime(df["startTime"], utc=True)
+            latest_publish = df["publishTime"].max()
+            df = df[df["publishTime"] == latest_publish].copy()
+            forecast_series = df.set_index("startTime")["demand"].astype(float).sort_index()
+            forecast_series = forecast_series.resample("30min").mean().interpolate()
+            status, issues, metrics = _validate_series(
+                forecast_series, min_rows=24, min_value=0.0, max_value=100000.0
+            )
+            record_feed_success(
+                "elexon_ndf",
+                records_received=len(forecast_series),
+                validation_status=status,
+                validation_issues=issues,
+                validation_metrics=metrics,
+            )
+    except Exception as exc:  # noqa: BLE001
+        record_feed_error("elexon_ndf", str(exc))
+        log.warning("Elexon NDF failed: %s", exc)
+
+    if not actual_series.empty or not forecast_series.empty:
+        combined = actual_series.combine_first(forecast_series).sort_index()
+        status, issues, metrics = _validate_series(combined, min_rows=24, min_value=0.0, max_value=100000.0)
+        record_feed_success(
+            "neso_demand",
+            records_received=len(combined),
+            validation_status=status,
+            validation_issues=issues,
+            validation_metrics=metrics,
+        )
+        return combined
 
     # Fallback: NESO settlement-period demand datasets
     for rid in (
