@@ -338,17 +338,23 @@ def ingest_pipeline_health(uow: UnitOfWorkDep) -> IngestPipelineHealth:
         rows_24h = (
             uow.session.execute(
                 select(func.count(ForecastDataORM.id)).where(
-                    field.is_not(None), ForecastDataORM.date_time >= since_24h
+                    field.is_not(None),
+                    ForecastDataORM.date_time >= since_24h,
+                    ForecastDataORM.date_time <= now,
                 )
             ).scalar_one()
             or 0
         )
         last_seen = uow.session.execute(
-            select(func.max(ForecastDataORM.date_time)).where(field.is_not(None))
+            select(func.max(ForecastDataORM.date_time)).where(
+                field.is_not(None), ForecastDataORM.date_time <= now
+            )
         ).scalar_one_or_none()
         recent_min, recent_max = uow.session.execute(
             select(func.min(field), func.max(field)).where(
-                field.is_not(None), ForecastDataORM.date_time >= since_24h
+                field.is_not(None),
+                ForecastDataORM.date_time >= since_24h,
+                ForecastDataORM.date_time <= now,
             )
         ).one()
 
@@ -368,14 +374,20 @@ def ingest_pipeline_health(uow: UnitOfWorkDep) -> IngestPipelineHealth:
         total_rows = uow.session.execute(select(func.count(PriceHistoryORM.id))).scalar_one() or 0
         rows_24h = (
             uow.session.execute(
-                select(func.count(PriceHistoryORM.id)).where(PriceHistoryORM.date_time >= since_24h)
+                select(func.count(PriceHistoryORM.id)).where(
+                    PriceHistoryORM.date_time >= since_24h,
+                    PriceHistoryORM.date_time <= now,
+                )
             ).scalar_one()
             or 0
         )
-        last_seen = uow.session.execute(select(func.max(PriceHistoryORM.date_time))).scalar_one_or_none()
+        last_seen = uow.session.execute(
+            select(func.max(PriceHistoryORM.date_time)).where(PriceHistoryORM.date_time <= now)
+        ).scalar_one_or_none()
         recent_min, recent_max = uow.session.execute(
             select(func.min(PriceHistoryORM.day_ahead), func.max(PriceHistoryORM.day_ahead)).where(
-                PriceHistoryORM.date_time >= since_24h
+                PriceHistoryORM.date_time >= since_24h,
+                PriceHistoryORM.date_time <= now,
             )
         ).one()
         status = _source_status(last_seen, now)
