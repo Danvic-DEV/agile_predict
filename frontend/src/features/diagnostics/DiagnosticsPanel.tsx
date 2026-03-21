@@ -513,7 +513,12 @@ export function DiagnosticsPanel() {
     },
     {
       label: "Latest forecast",
-      minutes: minutesSince(data?.created_at ?? null, nowMs),
+      minutes: minutesSince(
+        data?.forecast_name === "bundle::update-job-seed"
+          ? data?.update_source_updated_at ?? data?.created_at ?? null
+          : data?.created_at ?? null,
+        nowMs,
+      ),
     },
     {
       label: "Parity report",
