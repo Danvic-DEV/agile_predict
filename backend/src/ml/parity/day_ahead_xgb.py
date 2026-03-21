@@ -224,6 +224,7 @@ def check_ml_training_readiness(
 def run_ml_day_ahead_forecast(
     uow: UnitOfWork,
     point_count: int,
+    future_feature_frame: pd.DataFrame,
     bridge_day_ahead_values: tuple[float, ...] | None = None,
     max_days: int = 60,
     no_ranges: bool = False,
@@ -329,12 +330,11 @@ def run_ml_day_ahead_forecast(
     test_df = test_df.merge(prices_df[["day_ahead"]], left_index=True, right_index=True, how="inner")
     test_df = test_df.dropna(subset=list(LEGACY_FEATURES) + ["day_ahead", "dt"])
 
-    latest_forecast = forecasts[-1]
-    fc = fd[fd["forecast_id"] == latest_forecast.id].copy().sort_values("date_time")
+    fc = future_feature_frame.copy().sort_index().iloc[:point_count].copy()
     if fc.empty:
-        raise ValueError("latest forecast has no forecast_data rows")
+        raise ValueError("live future feature frame is empty")
 
-    fc = fc.set_index("date_time").sort_index().iloc[:point_count].copy()
+    fc.index = pd.to_datetime(fc.index, utc=True)
     now_utc = pd.Timestamp.now(tz="UTC")
     fc["weekend"] = (fc.index.day_of_week >= 5).astype(int)
     fc["days_ago"] = 0

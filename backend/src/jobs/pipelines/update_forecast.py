@@ -24,7 +24,7 @@ from src.domain.bootstrap_bundle import (
     write_history_forecast,
 )
 from src.domain.forecast_pipeline import ForecastRunResult, run_forecast_pipeline
-from src.ml.ingest.grid_weather import fetch_grid_weather_features
+from src.ml.ingest.grid_weather import fetch_grid_weather_features, fetch_live_forecast_features
 from src.ml.ingest.nordpool import fetch_day_ahead_prices
 from src.ml.ingest.octopus_agile import fetch_agile_prices_all_regions
 from src.ml.ingest.system_context import fetch_system_context_features
@@ -107,11 +107,46 @@ def run_update_forecast_job(uow: UnitOfWork) -> ForecastRunResult:
     if training_mode and ml_ready_reason is not None:
         ml_error = ml_ready_reason
 
+    forecast_points = len(day_ahead_values)
+    forecast_horizon_days = max(1, math.ceil(forecast_points / 48) + 1)
+    forecast_anchor = _align_to_half_hour(datetime.now(timezone.utc))
+    forward_features_df = fetch_live_forecast_features(
+        forecast_days=forecast_horizon_days,
+        now=forecast_anchor,
+    )
+    forward_features_df = forward_features_df.sort_index()
+    forward_features_df.index = pd.to_datetime(forward_features_df.index, utc=True)
+    forward_features_df = forward_features_df[forward_features_df.index >= pd.Timestamp(forecast_anchor)]
+
+    available_feature_points = len(forward_features_df)
+    if available_feature_points == 0:
+        raise RuntimeError("insufficient forward feature rows for forecast horizon: have=0")
+
+    forward_feature_warning: str | None = None
+    if available_feature_points < forecast_points:
+        missing_points = forecast_points - available_feature_points
+        missing_days = missing_points / 48.0
+        forward_feature_warning = (
+            f"insufficient forward feature rows for full horizon: "
+            f"have={available_feature_points} need={forecast_points} "
+            f"(missing={missing_points} slots, {missing_days:.2f} days)"
+        )
+        log.warning(
+            "Truncating forecast horizon to available live forecast features: %s",
+            forward_feature_warning,
+        )
+        forecast_points = available_feature_points
+        deterministic_values = tuple(deterministic_values[:forecast_points])
+        day_ahead_values = deterministic_values
+
+    live_feature_frame = forward_features_df.iloc[:forecast_points].copy()
+
     if ml_write_mode in {"ml", "shadow"}:
         try:
             ml_output = run_ml_day_ahead_forecast(
                 uow=uow,
-                point_count=len(day_ahead_values),
+                point_count=forecast_points,
+                future_feature_frame=live_feature_frame,
                 use_gpu=gpu_active,
             )
         except Exception as exc:
@@ -166,14 +201,6 @@ def run_update_forecast_job(uow: UnitOfWork) -> ForecastRunResult:
         day_ahead_high_values = None
         source = pipeline.source
 
-    forecast_points = len(day_ahead_values)
-    forecast_horizon_days = max(1, math.ceil(forecast_points / 48) + 1)
-    forecast_anchor = _align_to_half_hour(datetime.now(timezone.utc))
-    forward_features_df = fetch_grid_weather_features(lookback_days=5, forecast_days=forecast_horizon_days)
-    forward_features_df = forward_features_df.sort_index()
-    forward_features_df.index = pd.to_datetime(forward_features_df.index, utc=True)
-    forward_features_df = forward_features_df[forward_features_df.index >= pd.Timestamp(forecast_anchor)]
-
     feature_rows = [
         HistoryForecastFeatureRow(
             date_time=ts.to_pydatetime(),
@@ -186,32 +213,8 @@ def run_update_forecast_job(uow: UnitOfWork) -> ForecastRunResult:
             rad=float(row["rad"]),
             day_ahead=None,
         )
-        for ts, row in forward_features_df.iloc[:forecast_points].iterrows()
+        for ts, row in live_feature_frame.iterrows()
     ]
-    available_feature_points = len(feature_rows)
-    if available_feature_points == 0:
-        raise RuntimeError("insufficient forward feature rows for forecast horizon: have=0")
-
-    forward_feature_warning: str | None = None
-    if available_feature_points < forecast_points:
-        missing_points = forecast_points - available_feature_points
-        missing_days = missing_points / 48.0
-        forward_feature_warning = (
-            f"insufficient forward feature rows for full horizon: "
-            f"have={available_feature_points} need={forecast_points} "
-            f"(missing={missing_points} slots, {missing_days:.2f} days)"
-        )
-        log.warning(
-            "Truncating forecast horizon to available real features: %s",
-            forward_feature_warning,
-        )
-        forecast_points = available_feature_points
-        day_ahead_values = tuple(day_ahead_values[:forecast_points])
-        if day_ahead_low_values is not None:
-            day_ahead_low_values = tuple(day_ahead_low_values[:forecast_points])
-        if day_ahead_high_values is not None:
-            day_ahead_high_values = tuple(day_ahead_high_values[:forecast_points])
-        feature_rows = feature_rows[:forecast_points]
 
     if forward_feature_warning is not None:
         ml_error = f"{ml_error}; {forward_feature_warning}" if ml_error else forward_feature_warning

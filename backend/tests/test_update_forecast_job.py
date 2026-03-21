@@ -22,6 +22,7 @@ class _FakeUow:
 @pytest.fixture(autouse=True)
 def _stub_ml_readiness(monkeypatch) -> None:
     monkeypatch.setattr(update_forecast, "check_ml_training_readiness", lambda **kwargs: (False, None))
+    monkeypatch.setattr(update_forecast, "fetch_agile_prices_all_regions", lambda **kwargs: {})
 
 
 def test_run_update_forecast_job_passes_day_ahead_values_into_bundle(monkeypatch) -> None:

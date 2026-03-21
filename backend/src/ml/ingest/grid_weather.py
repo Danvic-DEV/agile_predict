@@ -107,6 +107,37 @@ def _neso_sql(resource_id: str, where_clause: str, limit: int = 40000) -> pd.Dat
     return pd.DataFrame(data["result"]["records"])
 
 
+def _fetch_elexon_ndf_forecast() -> pd.Series:
+    """Latest Elexon NDF forecast series."""
+    try:
+        data = _retry(lambda: _get_json("https://data.elexon.co.uk/bmrs/api/v1/datasets/NDF", {"format": "json"}))
+        df = pd.DataFrame(data.get("data", []))
+        if df.empty:
+            return pd.Series(dtype=float)
+
+        df["publishTime"] = pd.to_datetime(df["publishTime"], utc=True)
+        df["startTime"] = pd.to_datetime(df["startTime"], utc=True)
+        latest_publish = df["publishTime"].max()
+        df = df[df["publishTime"] == latest_publish].copy()
+        series = df.set_index("startTime")["demand"].astype(float).sort_index()
+        series = series.resample("30min").mean().interpolate()
+        status, issues, metrics = _validate_series(
+            series, min_rows=24, min_value=0.0, max_value=100000.0
+        )
+        record_feed_success(
+            "elexon_ndf",
+            records_received=len(series),
+            validation_status=status,
+            validation_issues=issues,
+            validation_metrics=metrics,
+        )
+        return series
+    except Exception as exc:  # noqa: BLE001
+        record_feed_error("elexon_ndf", str(exc))
+        log.warning("Elexon NDF failed: %s", exc)
+        return pd.Series(dtype=float)
+
+
 def _fetch_neso_demand(start_date: str) -> pd.Series:
     """Demand series using INDO actuals plus NDF future forecast when available."""
     actual_series = pd.Series(dtype=float)
@@ -136,30 +167,7 @@ def _fetch_neso_demand(start_date: str) -> pd.Series:
         record_feed_error("elexon_indo", str(exc))
         log.warning("Elexon INDO failed, trying NESO: %s", exc)
 
-    forecast_series = pd.Series(dtype=float)
-    try:
-        data = _retry(lambda: _get_json("https://data.elexon.co.uk/bmrs/api/v1/datasets/NDF", {"format": "json"}))
-        df = pd.DataFrame(data.get("data", []))
-        if not df.empty:
-            df["publishTime"] = pd.to_datetime(df["publishTime"], utc=True)
-            df["startTime"] = pd.to_datetime(df["startTime"], utc=True)
-            latest_publish = df["publishTime"].max()
-            df = df[df["publishTime"] == latest_publish].copy()
-            forecast_series = df.set_index("startTime")["demand"].astype(float).sort_index()
-            forecast_series = forecast_series.resample("30min").mean().interpolate()
-            status, issues, metrics = _validate_series(
-                forecast_series, min_rows=24, min_value=0.0, max_value=100000.0
-            )
-            record_feed_success(
-                "elexon_ndf",
-                records_received=len(forecast_series),
-                validation_status=status,
-                validation_issues=issues,
-                validation_metrics=metrics,
-            )
-    except Exception as exc:  # noqa: BLE001
-        record_feed_error("elexon_ndf", str(exc))
-        log.warning("Elexon NDF failed: %s", exc)
+    forecast_series = _fetch_elexon_ndf_forecast()
 
     if not actual_series.empty or not forecast_series.empty:
         combined = actual_series.combine_first(forecast_series).sort_index()
@@ -226,6 +234,80 @@ def _fetch_neso_bm_wind(start_date: str) -> pd.Series:
     except Exception as exc:  # noqa: BLE001
         record_feed_error("neso_bm_wind", str(exc))
         log.warning("NESO BM wind failed: %s", exc)
+        return pd.Series(dtype=float)
+
+
+def _fetch_neso_future_bm_wind() -> pd.Series:
+    """Future BM wind forecast used by main get_latest_forecast()."""
+    try:
+        url = "https://api.neso.energy/api/3/action/datastore_search"
+        params = {
+            "resource_id": "93c3048e-1dab-4057-a2a9-417540583929",
+            "limit": 1000,
+        }
+        data = _retry(lambda: _get_json(url, params))
+        df = pd.DataFrame(data["result"]["records"])
+        df.index = pd.to_datetime(df["Datetime"], utc=True)
+        series = df["Wind_Forecast"].astype(float).sort_index()
+        series = series.resample("30min").mean().interpolate()
+        status, issues, metrics = _validate_series(series, min_rows=24, min_value=0.0, max_value=30000.0)
+        record_feed_success(
+            "neso_bm_wind",
+            records_received=len(series),
+            validation_status=status,
+            validation_issues=issues,
+            validation_metrics=metrics,
+        )
+        return series
+    except Exception as exc:  # noqa: BLE001
+        record_feed_error("neso_bm_wind", str(exc))
+        log.warning("NESO future BM wind failed: %s", exc)
+        return pd.Series(dtype=float)
+
+
+def _fetch_neso_da_wind_forecast() -> pd.Series:
+    """NESO incentive day-ahead wind forecast used to override BM wind."""
+    try:
+        url = "https://api.neso.energy/api/3/action/datastore_search"
+        params = {
+            "resource_id": "b2f03146-f05d-4824-a663-3a4f36090c71",
+            "limit": 1000,
+        }
+        data = _retry(lambda: _get_json(url, params))
+        df = pd.DataFrame(data["result"]["records"])
+        df.index = pd.to_datetime(df["Datetime_GMT"], utc=True)
+        series = df["Incentive_forecast"].astype(float).sort_index()
+        return series.resample("30min").mean().interpolate()
+    except Exception as exc:  # noqa: BLE001
+        log.warning("NESO day-ahead wind failed: %s", exc)
+        return pd.Series(dtype=float)
+
+
+def _fetch_neso_national_demand_forecast() -> pd.Series:
+    """NESO national demand forecast used by main get_latest_forecast()."""
+    try:
+        url = "https://api.neso.energy/api/3/action/datastore_search"
+        params = {
+            "resource_id": "7c0411cd-2714-4bb5-a408-adb065edf34d",
+            "limit": 5000,
+        }
+        data = _retry(lambda: _get_json(url, params))
+        df = pd.DataFrame(data["result"]["records"])
+        df.index = pd.to_datetime(df["GDATETIME"], utc=True)
+        series = df["NATIONALDEMAND"].astype(float).sort_index()
+        series = series.resample("30min").mean().interpolate()
+        status, issues, metrics = _validate_series(series, min_rows=24, min_value=0.0, max_value=100000.0)
+        record_feed_success(
+            "neso_demand",
+            records_received=len(series),
+            validation_status=status,
+            validation_issues=issues,
+            validation_metrics=metrics,
+        )
+        return series
+    except Exception as exc:  # noqa: BLE001
+        record_feed_error("neso_demand", str(exc))
+        log.warning("NESO national demand forecast failed: %s", exc)
         return pd.Series(dtype=float)
 
 
@@ -490,3 +572,94 @@ def fetch_grid_weather_features(
         raise RuntimeError("Grid/weather features empty after alignment")
 
     return combined
+
+
+def fetch_live_forecast_features(
+    forecast_days: int = 14,
+    now: datetime | None = None,
+) -> pd.DataFrame:
+    """
+    Build the live future forecast feature frame to match main get_latest_forecast().
+
+    Returns a UTC-indexed 30-minute DataFrame containing:
+        emb_wind, bm_wind, solar, demand, temp_2m, wind_10m, rad
+    """
+    ref = now or datetime.now(timezone.utc)
+    ref_ts = pd.Timestamp(ref)
+    if ref_ts.tzinfo is None:
+        ref_ts = ref_ts.tz_localize("UTC")
+    else:
+        ref_ts = ref_ts.tz_convert("UTC")
+
+    anchor = ref_ts.floor("30min")
+    start_date = anchor.normalize().strftime("%Y-%m-%d")
+    end_date = (anchor.normalize() + pd.Timedelta(days=max(1, forecast_days))).strftime("%Y-%m-%d")
+
+    frames: dict[str, pd.Series] = {}
+
+    bm_wind = _fetch_neso_future_bm_wind()
+    if not bm_wind.empty:
+        frames["bm_wind"] = bm_wind
+
+    da_wind = _fetch_neso_da_wind_forecast()
+    if not da_wind.empty:
+        frames["da_wind"] = da_wind
+
+    embedded = _fetch_neso_embedded(start_date)
+    if not embedded.empty:
+        if "solar" in embedded.columns:
+            frames["solar"] = embedded["solar"]
+        if "emb_wind" in embedded.columns:
+            frames["emb_wind"] = embedded["emb_wind"]
+
+    national_demand = _fetch_neso_national_demand_forecast()
+    if not national_demand.empty:
+        frames["NATIONALDEMAND"] = national_demand
+
+    ndf_demand = _fetch_elexon_ndf_forecast()
+    if not ndf_demand.empty:
+        frames["demand"] = ndf_demand
+
+    meteo = _fetch_open_meteo(start_date, end_date)
+    if not meteo.empty:
+        for col in ["temp_2m", "wind_10m", "rad"]:
+            if col in meteo.columns:
+                frames[col] = meteo[col]
+
+    if not frames:
+        raise RuntimeError("all live forecast feature sources failed")
+
+    combined = pd.concat(list(frames.values()), axis=1)
+    combined.columns = list(frames.keys())
+    combined = combined.sort_index()
+
+    missing_cols: list[str] = []
+    demand_cols = ["demand", "NATIONALDEMAND"]
+    if all(col in combined.columns for col in demand_cols):
+        combined["demand"] = combined[demand_cols].mean(axis=1)
+        combined = combined.drop(columns=["NATIONALDEMAND"])
+    elif "NATIONALDEMAND" not in combined.columns:
+        missing_cols.append("NATIONALDEMAND")
+
+    if "da_wind" in combined.columns:
+        if "bm_wind" not in combined.columns:
+            combined["bm_wind"] = combined["da_wind"]
+        else:
+            combined.loc[combined["da_wind"] > 0, "bm_wind"] = combined.loc[combined["da_wind"] > 0, "da_wind"]
+        combined = combined.drop(columns=["da_wind"])
+
+    required = ["emb_wind", "bm_wind", "solar", "demand", "temp_2m", "wind_10m", "rad"]
+    missing_cols.extend([col for col in required if col not in combined.columns])
+    if missing_cols:
+        missing_text = ", ".join(sorted(dict.fromkeys(missing_cols)))
+        raise RuntimeError(f"missing live forecast feature columns: {missing_text}")
+
+    horizon_end = anchor.normalize() + pd.Timedelta(days=max(1, forecast_days + 1))
+    combined = combined[required]
+    combined = combined.loc[(combined.index >= anchor) & (combined.index < horizon_end)]
+    combined = combined.dropna().sort_index()
+
+    if combined.empty:
+        raise RuntimeError("live forecast features empty after alignment")
+
+    return combined.astype(float)
