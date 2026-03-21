@@ -570,7 +570,12 @@ export function DiagnosticsPanel() {
     return "ok";
   })();
 
-  const truthIssueCodes = new Set((pipelineTruthAudit?.issues ?? []).map((issue) => issue.code));
+  const truthIssues = pipelineTruthAudit?.issues ?? [];
+  const truthIssueCodes = new Set(truthIssues.map((issue) => issue.code));
+  const hasHighOrCriticalTruthIssue = truthIssues.some((issue) => {
+    const severity = issue.severity.toLowerCase();
+    return severity === "high" || severity === "critical";
+  });
   const truthVerdict: { state: "pass" | "fail" | "pending"; title: string; detail: string } = (() => {
     if (loadingPipelineTruth || !pipelineTruthAudit) {
       return {
@@ -612,6 +617,20 @@ export function DiagnosticsPanel() {
         state: "fail",
         title: "Deploy Verdict: FAIL",
         detail: "Truth audit trust level is low.",
+      };
+    }
+
+    if (hasHighOrCriticalTruthIssue) {
+      const firstBlockingIssue = truthIssues.find((issue) => {
+        const severity = issue.severity.toLowerCase();
+        return severity === "high" || severity === "critical";
+      });
+      return {
+        state: "fail",
+        title: "Deploy Verdict: FAIL",
+        detail: firstBlockingIssue
+          ? `${firstBlockingIssue.severity.toUpperCase()}: ${firstBlockingIssue.detail}`
+          : "Truth audit reported blocking issues.",
       };
     }
 
