@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from src.repositories.sql_models import ForecastORM
@@ -24,9 +25,17 @@ class ForecastWriteRepository:
         stdev: float | None = None,
     ) -> ForecastORM:
         row = ForecastORM(name=name, created_at=created_at, mean=mean, stdev=stdev)
-        self.session.add(row)
-        self.session.flush()
-        return row
+        try:
+            # Use a savepoint so unique-key races do not poison the outer transaction.
+            with self.session.begin_nested():
+                self.session.add(row)
+                self.session.flush()
+            return row
+        except IntegrityError:
+            existing = self.get_by_name(name)
+            if existing is not None:
+                return existing
+            raise
 
     def list_older_than(self, cutoff: datetime) -> list[ForecastORM]:
         stmt = select(ForecastORM).where(ForecastORM.created_at < cutoff)

@@ -33,6 +33,14 @@ def seed_empty_database(uow: UnitOfWork) -> str:
         _write_bootstrap_seed(uow)
         return "bootstrap"
 
+    if settings.auto_bootstrap_mode == "update" and settings.allow_startup_bootstrap_fallback:
+        logger.warning(
+            "Skipping blocking startup update because ALLOW_STARTUP_BOOTSTRAP_FALLBACK=true; "
+            "writing bootstrap seed and deferring update to scheduler."
+        )
+        _write_bootstrap_seed(uow)
+        return "bootstrap-fallback"
+
     try:
         result = run_update_forecast_job(uow=uow)
         if result.records_written > 0:

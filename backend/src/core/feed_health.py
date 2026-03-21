@@ -30,7 +30,6 @@ FEED_SOURCES = {
     "agile_octopus_M": {"name": "Agile UK - Region M", "freq_seconds": 1800, "staleness_threshold_seconds": 3600},
     "agile_octopus_N": {"name": "Agile UK - Region N", "freq_seconds": 1800, "staleness_threshold_seconds": 3600},
     "agile_octopus_P": {"name": "Agile UK - Region P", "freq_seconds": 1800, "staleness_threshold_seconds": 3600},
-    "agile_octopus_X": {"name": "Agile UK - Region X", "freq_seconds": 1800, "staleness_threshold_seconds": 3600},
     
     # Day-Ahead Prices
     "nordpool_da": {"name": "Nordpool Day-Ahead (UK)", "freq_seconds": 86400, "staleness_threshold_seconds": 172800},
@@ -94,10 +93,25 @@ def _read_feed_health() -> Dict[str, FeedHealthEntry]:
     try:
         with open(path, "r") as f:
             data = json.load(f)
-        return {
+        loaded = {
             source_id: FeedHealthEntry.from_dict(entry)
             for source_id, entry in data.items()
         }
+
+        # Reconcile to current source registry:
+        # - keep known sources (preserving their state)
+        # - add missing known sources with empty state
+        # - drop deprecated/unknown sources
+        reconciled: Dict[str, FeedHealthEntry] = {}
+        for source_id, cfg in FEED_SOURCES.items():
+            reconciled[source_id] = loaded.get(
+                source_id,
+                FeedHealthEntry(source_id=source_id, name=cfg["name"]),
+            )
+            # Ensure display name stays aligned with current config.
+            reconciled[source_id].name = cfg["name"]
+
+        return reconciled
     except (json.JSONDecodeError, KeyError, TypeError):
         # Reset if corrupted
         return {
@@ -191,8 +205,8 @@ def get_feed_health() -> Dict[str, dict]:
                 status = "stale"
             else:
                 status = "healthy"
-        elif source_id.startswith("agile_octopus_") or source_id == "elexon_ndf":
-            # These feeds are currently not polled by the migrated runtime path.
+        elif source_id == "elexon_ndf":
+            # This feed is tracked but may not be pulled in every runtime path.
             status = "inactive"
         
         result[source_id] = {

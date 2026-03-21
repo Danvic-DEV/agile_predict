@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pandas as pd
 
@@ -263,8 +263,7 @@ def run_update_forecast_job(uow: UnitOfWork) -> ForecastRunResult:
     agile_actual_upsert_count = 0
     try:
         now_utc = datetime.now(timezone.utc)
-        # Collect last 30 days by default; can be extended for backfill
-        from_date = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+        from_date = now_utc - timedelta(days=30)
         agile_prices_by_region = fetch_agile_prices_all_regions(
             from_date=from_date,
             to_date=now_utc,

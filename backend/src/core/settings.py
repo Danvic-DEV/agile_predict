@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     allow_ingest_fallback: bool = Field(default=False, alias="ALLOW_INGEST_FALLBACK")
     allow_ml_fallback: bool = Field(default=False, alias="ALLOW_ML_FALLBACK")
     allow_startup_bootstrap_fallback: bool = Field(default=False, alias="ALLOW_STARTUP_BOOTSTRAP_FALLBACK")
+    startup_update_timeout_seconds: int = Field(default=180, alias="STARTUP_UPDATE_TIMEOUT_SECONDS")
 
     def validate_db_mode(self) -> None:
         if self.db_mode not in {"external", "local"}:
@@ -65,6 +66,9 @@ class Settings(BaseSettings):
 
         if self.auto_update_interval_seconds < 60:
             raise ValueError("AUTO_UPDATE_INTERVAL_SECONDS must be >= 60.")
+
+        if self.startup_update_timeout_seconds < 10:
+            raise ValueError("STARTUP_UPDATE_TIMEOUT_SECONDS must be >= 10.")
 
     @property
     def cors_origins_list(self) -> list[str]:
