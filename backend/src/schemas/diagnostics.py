@@ -161,6 +161,28 @@ class IngestPipelineHealth(BaseModel):
     sources: list[SourceCollectionStatus]
 
 
+class PipelineTruthIssue(BaseModel):
+    code: str
+    severity: str
+    detail: str
+
+
+class PipelineTruthAudit(BaseModel):
+    generated_at: str
+    trust_level: str
+    latest_forecast_id: int | None
+    latest_forecast_created_at: str | None
+    latest_forecast_rows: int
+    latest_unique_slots: int
+    latest_duplicate_slots: int
+    latest_day_ahead_non_null_rows: int
+    latest_day_ahead_zero_rows: int
+    latest_day_ahead_zero_ratio: float | None
+    latest_data_last_seen: str | None
+    latest_data_freshness_minutes: int | None
+    issues: list[PipelineTruthIssue]
+
+
 class ExternalSystemContextHealth(BaseModel):
     generated_at: str
     total_rows: int

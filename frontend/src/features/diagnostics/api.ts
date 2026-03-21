@@ -9,6 +9,7 @@ import type {
   LatestForecastDiagnostics,
   MlGpuStatus,
   MlParityScorecard,
+  PipelineTruthAudit,
   ParityHistoryResponse,
   LatestParitySummary,
   RunUpdateJobResponse,
@@ -54,6 +55,10 @@ export function fetchFeedHealth(): Promise<Record<string, unknown>> {
 
 export function fetchIngestPipelineHealth(): Promise<IngestPipelineHealth> {
   return getJson<IngestPipelineHealth>("/diagnostics/ingest-pipeline-health");
+}
+
+export function fetchPipelineTruthAudit(): Promise<PipelineTruthAudit> {
+  return getJson<PipelineTruthAudit>("/diagnostics/pipeline-truth-audit");
 }
 
 export function fetchParityHistory(options?: {

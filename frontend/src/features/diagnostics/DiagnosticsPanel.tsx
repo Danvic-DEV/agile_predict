@@ -6,6 +6,7 @@ import {
   fetchIngestPipelineHealth,
   fetchLatestDiagnostics,
   fetchMlGpuStatus,
+  fetchPipelineTruthAudit,
   fetchParityHistory,
   fetchLatestParitySummary,
   fetchMlParityScorecard,
@@ -22,6 +23,7 @@ import type {
   LatestParitySummary,
   MlGpuStatus,
   MlParityScorecard,
+  PipelineTruthAudit,
   ParityHistoryItem,
 } from "../../lib/api/types";
 
@@ -203,6 +205,7 @@ export function DiagnosticsPanel() {
   const [gpuStatus, setGpuStatus] = useState<MlGpuStatus | null>(null);
   const [parityHistory, setParityHistory] = useState<ParityHistoryItem[]>([]);
   const [pipelineHealth, setPipelineHealth] = useState<IngestPipelineHealth | null>(null);
+  const [pipelineTruthAudit, setPipelineTruthAudit] = useState<PipelineTruthAudit | null>(null);
   const [feedHealth, setFeedHealth] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState("");
   const [parityError, setParityError] = useState("");
@@ -231,6 +234,7 @@ export function DiagnosticsPanel() {
   const [loadingScorecard, setLoadingScorecard] = useState(true);
   const [loadingParityHistory, setLoadingParityHistory] = useState(true);
   const [loadingPipeline, setLoadingPipeline] = useState(true);
+  const [loadingPipelineTruth, setLoadingPipelineTruth] = useState(true);
   const [loadingGpu, setLoadingGpu] = useState(true);
   const [loadingFeedHealth, setLoadingFeedHealth] = useState(true);
   const [loadingDiscord, setLoadingDiscord] = useState(true);
@@ -239,6 +243,7 @@ export function DiagnosticsPanel() {
   const [scorecardLoadedAt, setScorecardLoadedAt] = useState<string | null>(null);
   const [parityHistoryLoadedAt, setParityHistoryLoadedAt] = useState<string | null>(null);
   const [pipelineLoadedAt, setPipelineLoadedAt] = useState<string | null>(null);
+  const [pipelineTruthLoadedAt, setPipelineTruthLoadedAt] = useState<string | null>(null);
   const [gpuLoadedAt, setGpuLoadedAt] = useState<string | null>(null);
   const [feedHealthLoadedAt, setFeedHealthLoadedAt] = useState<string | null>(null);
   const [discordLoadedAt, setDiscordLoadedAt] = useState<string | null>(null);
@@ -341,6 +346,20 @@ export function DiagnosticsPanel() {
     }
   }
 
+  async function refreshPipelineTruthAudit() {
+    setLoadingPipelineTruth(true);
+    try {
+      const result = await fetchPipelineTruthAudit();
+      setPipelineTruthAudit(result);
+      setParityError("");
+      setPipelineTruthLoadedAt(new Date().toISOString());
+    } catch (err) {
+      setParityError(err instanceof Error ? err.message : "Failed loading pipeline truth audit");
+    } finally {
+      setLoadingPipelineTruth(false);
+    }
+  }
+
   async function refreshGpuStatus() {
     setLoadingGpu(true);
     try {
@@ -393,6 +412,7 @@ export function DiagnosticsPanel() {
       refreshScorecard(),
       refreshParityHistory(),
       refreshPipelineHealth(),
+      refreshPipelineTruthAudit(),
       refreshGpuStatus(),
       refreshFeedHealth(),
       refreshDiscordConfig(),
@@ -405,6 +425,7 @@ export function DiagnosticsPanel() {
     void refreshScorecard();
     void refreshParityHistory();
     void refreshPipelineHealth();
+    void refreshPipelineTruthAudit();
     void refreshGpuStatus();
     void refreshFeedHealth();
     void refreshDiscordConfig();
@@ -527,8 +548,12 @@ export function DiagnosticsPanel() {
     loadingGpu ? "loading" : gpuStatus?.compatible === false ? "warn" : "ok";
 
   const pipelineTabHealth: "ok" | "warn" | "bad" | "loading" =
-    loadingPipeline
+    loadingPipeline || loadingPipelineTruth
       ? "loading"
+      : pipelineTruthAudit?.trust_level === "low"
+        ? "bad"
+        : pipelineTruthAudit?.trust_level === "medium"
+          ? "warn"
       : pipelineHealth?.all_sources_healthy === false
         ? "warn"
         : "ok";
@@ -1158,6 +1183,72 @@ export function DiagnosticsPanel() {
       {/* DATA PIPELINE TAB */}
       {activeTab === "pipeline" && (
         <>
+          {(loadingPipelineTruth || pipelineTruthAudit) && (
+            <div className={`pipeline-health-card progressive-card ${loadingPipelineTruth ? "is-loading" : "is-ready"}`}>
+              <div className="chart-header">
+                <h3>Pipeline Truth Audit</h3>
+                <span
+                  className={`section-health-pill ${
+                    pipelineTruthAudit?.trust_level === "high"
+                      ? "ok"
+                      : pipelineTruthAudit?.trust_level === "medium"
+                        ? "warn"
+                        : "bad"
+                  }`}
+                >
+                  {pipelineTruthAudit ? `TRUST ${pipelineTruthAudit.trust_level.toUpperCase()}` : "AUDITING..."}
+                </span>
+              </div>
+              <p className="section-meta">{formatSectionLoadedAt(pipelineTruthLoadedAt)}</p>
+              {loadingPipelineTruth && <p className="section-loading">Auditing persisted forecast truth signals...</p>}
+
+              {pipelineTruthAudit && (
+                <>
+                  <div className="metric-grid" style={{ marginTop: 10 }}>
+                    <div>
+                      <span className="label">Latest Forecast Rows</span>
+                      <strong>{pipelineTruthAudit.latest_forecast_rows}</strong>
+                    </div>
+                    <div>
+                      <span className="label">Unique Slots</span>
+                      <strong>{pipelineTruthAudit.latest_unique_slots}</strong>
+                    </div>
+                    <div>
+                      <span className="label">Duplicate Slots</span>
+                      <strong>{pipelineTruthAudit.latest_duplicate_slots}</strong>
+                    </div>
+                    <div>
+                      <span className="label">Zero Day-Ahead Ratio</span>
+                      <strong>
+                        {pipelineTruthAudit.latest_day_ahead_zero_ratio === null
+                          ? "n/a"
+                          : `${(pipelineTruthAudit.latest_day_ahead_zero_ratio * 100).toFixed(1)}%`}
+                      </strong>
+                    </div>
+                    <div>
+                      <span className="label">Last Seen (UTC)</span>
+                      <strong>{formatIsoDate(pipelineTruthAudit.latest_data_last_seen)}</strong>
+                    </div>
+                    <div>
+                      <span className="label">Freshness (min)</span>
+                      <strong>{pipelineTruthAudit.latest_data_freshness_minutes ?? "n/a"}</strong>
+                    </div>
+                  </div>
+
+                  {pipelineTruthAudit.issues.length > 0 ? (
+                    <ul className="history-list" style={{ marginTop: 10 }}>
+                      {pipelineTruthAudit.issues.map((issue) => (
+                        <li key={issue.code}>{issue.severity.toUpperCase()}: {issue.detail}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="section-loading" style={{ marginTop: 10 }}>No integrity issues detected in latest persisted forecast.</p>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
           {loadingPipeline && (
             <div className="pipeline-health-card">
               <p className="section-loading">Loading pipeline health...</p>

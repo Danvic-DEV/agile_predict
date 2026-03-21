@@ -27,6 +27,8 @@ from src.schemas.diagnostics import (
     DiscordTestResponse,
     ExternalSystemContextHealth,
     IngestPipelineHealth,
+    PipelineTruthAudit,
+    PipelineTruthIssue,
     MlGpuConfigRequest,
     MlGpuStatus,
     LatestForecastDiagnostics,
@@ -470,6 +472,161 @@ def ingest_pipeline_health(uow: UnitOfWorkDep) -> IngestPipelineHealth:
         expected_source_count=len(sources),
         stages=stages,
         sources=sources,
+    )
+
+
+@router.get("/pipeline-truth-audit", response_model=PipelineTruthAudit)
+def pipeline_truth_audit(uow: UnitOfWorkDep) -> PipelineTruthAudit:
+    now = datetime.now(timezone.utc)
+
+    latest_forecast = uow.session.execute(
+        select(ForecastORM).order_by(ForecastORM.created_at.desc()).limit(1)
+    ).scalar_one_or_none()
+
+    if latest_forecast is None:
+        return PipelineTruthAudit(
+            generated_at=now.isoformat(),
+            trust_level="low",
+            latest_forecast_id=None,
+            latest_forecast_created_at=None,
+            latest_forecast_rows=0,
+            latest_unique_slots=0,
+            latest_duplicate_slots=0,
+            latest_day_ahead_non_null_rows=0,
+            latest_day_ahead_zero_rows=0,
+            latest_day_ahead_zero_ratio=None,
+            latest_data_last_seen=None,
+            latest_data_freshness_minutes=None,
+            issues=[
+                PipelineTruthIssue(
+                    code="no_forecast_rows",
+                    severity="critical",
+                    detail="No forecast runs exist in storage.",
+                )
+            ],
+        )
+
+    latest_forecast_id = int(latest_forecast.id)
+    latest_forecast_created_at = latest_forecast.created_at.isoformat()
+
+    latest_rows = (
+        uow.session.execute(
+            select(func.count(ForecastDataORM.id)).where(ForecastDataORM.forecast_id == latest_forecast_id)
+        ).scalar_one()
+        or 0
+    )
+    latest_unique_slots = (
+        uow.session.execute(
+            select(func.count(func.distinct(ForecastDataORM.date_time))).where(
+                ForecastDataORM.forecast_id == latest_forecast_id
+            )
+        ).scalar_one()
+        or 0
+    )
+    latest_day_ahead_non_null_rows = (
+        uow.session.execute(
+            select(func.count(ForecastDataORM.id)).where(
+                ForecastDataORM.forecast_id == latest_forecast_id,
+                ForecastDataORM.day_ahead.is_not(None),
+            )
+        ).scalar_one()
+        or 0
+    )
+    latest_day_ahead_zero_rows = (
+        uow.session.execute(
+            select(func.count(ForecastDataORM.id)).where(
+                ForecastDataORM.forecast_id == latest_forecast_id,
+                ForecastDataORM.day_ahead.is_not(None),
+                ForecastDataORM.day_ahead == 0.0,
+            )
+        ).scalar_one()
+        or 0
+    )
+    latest_data_last_seen = uow.session.execute(
+        select(func.max(ForecastDataORM.date_time)).where(ForecastDataORM.forecast_id == latest_forecast_id)
+    ).scalar_one_or_none()
+
+    latest_duplicate_slots = max(0, int(latest_rows) - int(latest_unique_slots))
+
+    latest_day_ahead_zero_ratio: float | None = None
+    if latest_day_ahead_non_null_rows > 0:
+        latest_day_ahead_zero_ratio = float(latest_day_ahead_zero_rows) / float(latest_day_ahead_non_null_rows)
+
+    latest_data_freshness_minutes: int | None = None
+    if latest_data_last_seen is not None:
+        latest_data_freshness_minutes = max(
+            0,
+            int((now - latest_data_last_seen).total_seconds() // 60),
+        )
+
+    issues: list[PipelineTruthIssue] = []
+
+    if latest_rows < 48:
+        issues.append(
+            PipelineTruthIssue(
+                code="low_forecast_row_count",
+                severity="critical",
+                detail=f"Latest forecast has only {latest_rows} rows; expected at least 48.",
+            )
+        )
+
+    if latest_duplicate_slots > 0:
+        issues.append(
+            PipelineTruthIssue(
+                code="duplicate_slots",
+                severity="high",
+                detail=f"Latest forecast contains {latest_duplicate_slots} duplicate date_time slots.",
+            )
+        )
+
+    if latest_day_ahead_non_null_rows == 0:
+        issues.append(
+            PipelineTruthIssue(
+                code="missing_day_ahead_values",
+                severity="critical",
+                detail="Latest forecast has no non-null day_ahead values.",
+            )
+        )
+
+    if latest_day_ahead_zero_ratio is not None and latest_day_ahead_zero_ratio > 0.2:
+        issues.append(
+            PipelineTruthIssue(
+                code="excessive_zero_day_ahead",
+                severity="high",
+                detail=f"Latest forecast has {latest_day_ahead_zero_ratio:.1%} zero day_ahead values.",
+            )
+        )
+
+    if latest_data_freshness_minutes is not None and latest_data_freshness_minutes > 240:
+        issues.append(
+            PipelineTruthIssue(
+                code="stale_latest_forecast",
+                severity="high",
+                detail=f"Latest forecast data is {latest_data_freshness_minutes} minutes old.",
+            )
+        )
+
+    if any(issue.severity == "critical" for issue in issues):
+        trust_level = "low"
+    elif issues:
+        trust_level = "medium"
+    else:
+        trust_level = "high"
+
+    return PipelineTruthAudit(
+        generated_at=now.isoformat(),
+        trust_level=trust_level,
+        latest_forecast_id=latest_forecast_id,
+        latest_forecast_created_at=latest_forecast_created_at,
+        latest_forecast_rows=int(latest_rows),
+        latest_unique_slots=int(latest_unique_slots),
+        latest_duplicate_slots=int(latest_duplicate_slots),
+        latest_day_ahead_non_null_rows=int(latest_day_ahead_non_null_rows),
+        latest_day_ahead_zero_rows=int(latest_day_ahead_zero_rows),
+        latest_day_ahead_zero_ratio=latest_day_ahead_zero_ratio,
+        latest_data_last_seen=latest_data_last_seen.isoformat() if latest_data_last_seen else None,
+        latest_data_freshness_minutes=latest_data_freshness_minutes,
+        issues=issues,
     )
 
 

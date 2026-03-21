@@ -197,3 +197,25 @@ export interface IngestPipelineHealth {
   stages: PipelineStageStatus[];
   sources: SourceCollectionStatus[];
 }
+
+export interface PipelineTruthIssue {
+  code: string;
+  severity: string;
+  detail: string;
+}
+
+export interface PipelineTruthAudit {
+  generated_at: string;
+  trust_level: string;
+  latest_forecast_id: number | null;
+  latest_forecast_created_at: string | null;
+  latest_forecast_rows: number;
+  latest_unique_slots: number;
+  latest_duplicate_slots: number;
+  latest_day_ahead_non_null_rows: number;
+  latest_day_ahead_zero_rows: number;
+  latest_day_ahead_zero_ratio: number | null;
+  latest_data_last_seen: string | null;
+  latest_data_freshness_minutes: number | null;
+  issues: PipelineTruthIssue[];
+}
