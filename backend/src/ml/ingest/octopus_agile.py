@@ -77,13 +77,23 @@ def _resolve_agile_regions(product_id: str, timeout: int = 20) -> list[str]:
     return regions
 
 
-def build_tariff_url(region: str, product_id: str, page: int | None = None) -> str:
+def build_tariff_url(
+    region: str,
+    product_id: str,
+    page: int | None = None,
+    period_from: datetime | None = None,
+    period_to: datetime | None = None,
+) -> str:
     """Build Octopus API URL for a specific region's standard unit rates."""
     tariff_code = f"E-1R-{product_id}-{region}"
     url = f"{OCTOPUS_BASE_URL}/products/{product_id}/electricity-tariffs/{tariff_code}/standard-unit-rates/"
-    params = {"page_size": 1500}  # Max results per page
+    params: dict = {"page_size": 1500}  # Max results per page
     if page is not None:
         params["page"] = page
+    if period_from is not None:
+        params["period_from"] = period_from.strftime("%Y-%m-%dT%H:%M:%SZ")
+    if period_to is not None:
+        params["period_to"] = period_to.strftime("%Y-%m-%dT%H:%M:%SZ")
     return f"{url}?{urlencode(params)}"
 
 
@@ -137,7 +147,7 @@ def fetch_agile_prices_for_region(
     max_pages = 500  # Safety limit to prevent infinite loops
 
     while page <= max_pages:
-        url = build_tariff_url(region, product_id, page)
+        url = build_tariff_url(region, product_id, page, period_from=from_date, period_to=to_date)
         log.debug(f"Fetching Agile prices for region {region}, page {page}")
 
         try:
@@ -152,13 +162,7 @@ def fetch_agile_prices_for_region(
         if not page_prices:
             break
 
-        # Filter to requested date range
-        filtered = {
-            dt: price
-            for dt, price in page_prices.items()
-            if from_date <= dt <= to_date
-        }
-        all_prices.update(filtered)
+        all_prices.update(page_prices)
 
         # Check if there's a next page
         next_url = payload.get("next")
