@@ -105,6 +105,28 @@ body {
   border-bottom-color: #f2b84b;
 }
 
+.loading-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.loading-chip {
+  font-size: 0.75rem;
+  color: #d7e2e8;
+  border: 1px solid rgba(201, 214, 220, 0.25);
+  border-radius: 999px;
+  padding: 2px 8px;
+  background: rgba(17, 26, 35, 0.5);
+}
+
+.section-loading {
+  margin: 0;
+  color: #9eb2be;
+  font-size: 0.85rem;
+}
+
 /* Page-level Tab Navigation */
 .page-tab-navigation {
   display: flex;

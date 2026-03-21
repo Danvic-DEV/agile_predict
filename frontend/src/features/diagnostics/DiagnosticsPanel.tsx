@@ -219,6 +219,14 @@ export function DiagnosticsPanel() {
   );
   const [discordEnabled, setDiscordEnabled] = useState(false);
   const [discordError, setDiscordError] = useState("");
+  const [loadingDiagnostics, setLoadingDiagnostics] = useState(true);
+  const [loadingParitySummary, setLoadingParitySummary] = useState(true);
+  const [loadingScorecard, setLoadingScorecard] = useState(true);
+  const [loadingParityHistory, setLoadingParityHistory] = useState(true);
+  const [loadingPipeline, setLoadingPipeline] = useState(true);
+  const [loadingGpu, setLoadingGpu] = useState(true);
+  const [loadingFeedHealth, setLoadingFeedHealth] = useState(true);
+  const [loadingDiscord, setLoadingDiscord] = useState(true);
 
   const parityStatus = parity?.report_available
     ? parity.all_passed
@@ -236,40 +244,104 @@ export function DiagnosticsPanel() {
   }
 
   async function refreshDiagnostics() {
-    const result = await fetchLatestDiagnostics();
-    setData(result);
-    setError("");
+    setLoadingDiagnostics(true);
+    try {
+      const result = await fetchLatestDiagnostics();
+      setData(result);
+      setError("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed loading diagnostics");
+    } finally {
+      setLoadingDiagnostics(false);
+    }
   }
 
-  async function refreshParity() {
+  async function refreshParitySummary() {
+    setLoadingParitySummary(true);
     try {
-      const [result, scorecardResult, parityHistoryResult, healthResult, gpuResult, feedHealthResult] = await Promise.all([
-        fetchLatestParitySummary(),
-        fetchMlParityScorecard(30),
-        fetchParityHistory({
-          limit: HISTORY_PAGE_SIZE,
-          offset: historyOffset,
-          status: historyStatusFilter === "all" ? undefined : historyStatusFilter,
-          since: buildHistorySinceIso(),
-        }),
-        fetchIngestPipelineHealth(),
-        fetchMlGpuStatus(),
-        fetchFeedHealth(),
-      ]);
+      const result = await fetchLatestParitySummary();
       setParity(result);
+      setParityError("");
+    } catch (err) {
+      setParityError(err instanceof Error ? err.message : "Failed loading parity summary");
+    } finally {
+      setLoadingParitySummary(false);
+    }
+  }
+
+  async function refreshScorecard() {
+    setLoadingScorecard(true);
+    try {
+      const scorecardResult = await fetchMlParityScorecard(30);
       setScorecard(scorecardResult);
+      setParityError("");
+    } catch (err) {
+      setParityError(err instanceof Error ? err.message : "Failed loading parity scorecard");
+    } finally {
+      setLoadingScorecard(false);
+    }
+  }
+
+  async function refreshParityHistory() {
+    setLoadingParityHistory(true);
+    try {
+      const parityHistoryResult = await fetchParityHistory({
+        limit: HISTORY_PAGE_SIZE,
+        offset: historyOffset,
+        status: historyStatusFilter === "all" ? undefined : historyStatusFilter,
+        since: buildHistorySinceIso(),
+      });
       setParityHistory(parityHistoryResult.items);
       setHistoryTotal(parityHistoryResult.total);
+      setParityError("");
+    } catch (err) {
+      setParityError(err instanceof Error ? err.message : "Failed loading parity history");
+    } finally {
+      setLoadingParityHistory(false);
+    }
+  }
+
+  async function refreshPipelineHealth() {
+    setLoadingPipeline(true);
+    try {
+      const healthResult = await fetchIngestPipelineHealth();
       setPipelineHealth(healthResult);
+      setParityError("");
+    } catch (err) {
+      setParityError(err instanceof Error ? err.message : "Failed loading pipeline health");
+    } finally {
+      setLoadingPipeline(false);
+    }
+  }
+
+  async function refreshGpuStatus() {
+    setLoadingGpu(true);
+    try {
+      const gpuResult = await fetchMlGpuStatus();
       setGpuStatus(gpuResult);
+      setParityError("");
+    } catch (err) {
+      setParityError(err instanceof Error ? err.message : "Failed loading GPU status");
+    } finally {
+      setLoadingGpu(false);
+    }
+  }
+
+  async function refreshFeedHealth() {
+    setLoadingFeedHealth(true);
+    try {
+      const feedHealthResult = await fetchFeedHealth();
       setFeedHealth(feedHealthResult);
       setParityError("");
     } catch (err) {
-      setParityError(err instanceof Error ? err.message : "Failed loading parity/health summary");
+      setParityError(err instanceof Error ? err.message : "Failed loading feed health");
+    } finally {
+      setLoadingFeedHealth(false);
     }
   }
 
   async function refreshDiscordConfig() {
+    setLoadingDiscord(true);
     try {
       const result = await fetchDiscordConfig();
       setDiscordWebhookUrl(result.webhook_url ?? "");
@@ -279,38 +351,33 @@ export function DiagnosticsPanel() {
       setDiscordError("");
     } catch (err) {
       setDiscordError(err instanceof Error ? err.message : "Failed loading Discord configuration");
+    } finally {
+      setLoadingDiscord(false);
     }
   }
 
   async function refreshAll() {
-    await Promise.all([refreshDiagnostics(), refreshParity(), refreshDiscordConfig()]);
+    await Promise.all([
+      refreshDiagnostics(),
+      refreshParitySummary(),
+      refreshScorecard(),
+      refreshParityHistory(),
+      refreshPipelineHealth(),
+      refreshGpuStatus(),
+      refreshFeedHealth(),
+      refreshDiscordConfig(),
+    ]);
   }
 
   useEffect(() => {
-    let active = true;
-
-    async function load() {
-      try {
-        const result = await fetchLatestDiagnostics();
-        if (!active) {
-          return;
-        }
-        setData(result);
-        setError("");
-
-        await Promise.all([refreshParity(), refreshDiscordConfig()]);
-      } catch (err) {
-        if (!active) {
-          return;
-        }
-        setError(err instanceof Error ? err.message : "Failed loading diagnostics");
-      }
-    }
-
-    load();
-    return () => {
-      active = false;
-    };
+    void refreshDiagnostics();
+    void refreshParitySummary();
+    void refreshScorecard();
+    void refreshParityHistory();
+    void refreshPipelineHealth();
+    void refreshGpuStatus();
+    void refreshFeedHealth();
+    void refreshDiscordConfig();
   }, [historyStatusFilter, historyWindowHours, historyOffset]);
 
   useEffect(() => {
@@ -590,11 +657,21 @@ export function DiagnosticsPanel() {
       {parityError && <p>Parity summary unavailable: {parityError}</p>}
       {discordError && <p>Discord configuration unavailable: {discordError}</p>}
       {!error && !data && <p>Loading diagnostics...</p>}
+      <div className="loading-chip-row">
+        {loadingDiagnostics && <span className="loading-chip">Summary loading...</span>}
+        {loadingParitySummary && <span className="loading-chip">Parity loading...</span>}
+        {loadingScorecard && <span className="loading-chip">Scorecard loading...</span>}
+        {loadingParityHistory && <span className="loading-chip">History loading...</span>}
+        {loadingPipeline && <span className="loading-chip">Pipeline loading...</span>}
+        {loadingGpu && <span className="loading-chip">GPU loading...</span>}
+        {loadingFeedHealth && <span className="loading-chip">Feed health loading...</span>}
+        {loadingDiscord && <span className="loading-chip">Discord loading...</span>}
+      </div>
 
       {/* STATUS TAB */}
       {activeTab === "status" && (
         <>
-          {(data || scorecard) && (
+          {(data || scorecard || loadingDiagnostics || loadingScorecard) && (
             <div className="growth-visibility-card">
               <div className="chart-header">
                 <h3>Data Growth and Readiness</h3>
@@ -647,59 +724,61 @@ export function DiagnosticsPanel() {
             </div>
           )}
 
-          {data && (
+          {(data || loadingDiagnostics) && (
             <>
               <div className="update-run-card">
                 <h3>Last Update Run</h3>
-                <div className="update-run-topline">{formatUpdateRelativeTime(data.update_source_updated_at, nowMs)}</div>
+                <div className="update-run-topline">
+                  {loadingDiagnostics ? "Loading latest run..." : formatUpdateRelativeTime(data?.update_source_updated_at ?? null, nowMs)}
+                </div>
                 <div className="update-run-grid">
                   <span>Source</span>
-                  <strong>{data.update_source ?? "n/a"}</strong>
+                  <strong>{data?.update_source ?? "n/a"}</strong>
                   <span>Records</span>
-                  <strong>{data.update_records_written ?? "n/a"}</strong>
+                  <strong>{data?.update_records_written ?? "n/a"}</strong>
                   <span>Day-Ahead Points</span>
-                  <strong>{data.update_day_ahead_points ?? "n/a"}</strong>
+                  <strong>{data?.update_day_ahead_points ?? "n/a"}</strong>
                   <span>Raw Points</span>
-                  <strong>{data.update_raw_points ?? "n/a"}</strong>
+                  <strong>{data?.update_raw_points ?? "n/a"}</strong>
                   <span>Aligned Points</span>
-                  <strong>{data.update_aligned_points ?? "n/a"}</strong>
+                  <strong>{data?.update_aligned_points ?? "n/a"}</strong>
                   <span>Interpolated Points</span>
-                  <strong>{data.update_interpolated_points ?? "n/a"}</strong>
+                  <strong>{data?.update_interpolated_points ?? "n/a"}</strong>
                   <span>Retries Used</span>
-                  <strong>{data.update_retries_used ?? "n/a"}</strong>
+                  <strong>{data?.update_retries_used ?? "n/a"}</strong>
                   <span>Ingest Error</span>
-                  <strong>{data.update_ingest_error ?? "none"}</strong>
+                  <strong>{data?.update_ingest_error ?? "none"}</strong>
                   <span>Forecast</span>
-                  <strong>{data.update_forecast_name ?? "n/a"}</strong>
+                  <strong>{data?.update_forecast_name ?? "n/a"}</strong>
                   <span>Updated (UTC)</span>
-                  <strong>{formatUpdateAbsoluteTime(data.update_source_updated_at)}</strong>
+                  <strong>{formatUpdateAbsoluteTime(data?.update_source_updated_at ?? null)}</strong>
                 </div>
               </div>
 
               <div className="metric-grid" style={{ marginTop: 12 }}>
                 <div>
                   <span className="label">Forecast</span>
-                  <strong>{data.forecast_name}</strong>
+                  <strong>{data?.forecast_name ?? "n/a"}</strong>
                 </div>
                 <div>
                   <span className="label">Forecast Data Rows</span>
-                  <strong>{data.forecast_data_count}</strong>
+                  <strong>{data?.forecast_data_count ?? "n/a"}</strong>
                 </div>
                 <div>
                   <span className="label">Agile Rows (All)</span>
-                  <strong>{data.agile_points_total}</strong>
+                  <strong>{data?.agile_points_total ?? "n/a"}</strong>
                 </div>
                 <div>
                   <span className="label">Agile Rows (Region G)</span>
-                  <strong>{data.agile_points_region_g}</strong>
+                  <strong>{data?.agile_points_region_g ?? "n/a"}</strong>
                 </div>
                 <div>
                   <span className="label">Day-Ahead Mean</span>
-                  <strong>{data.day_ahead_mean ?? "n/a"}</strong>
+                  <strong>{data?.day_ahead_mean ?? "n/a"}</strong>
                 </div>
                 <div>
                   <span className="label">Demand Mean</span>
-                  <strong>{data.demand_mean ?? "n/a"}</strong>
+                  <strong>{data?.demand_mean ?? "n/a"}</strong>
                 </div>
               </div>
             </>
@@ -710,6 +789,11 @@ export function DiagnosticsPanel() {
       {/* ML MODEL TAB */}
       {activeTab === "ml-model" && (
         <>
+          {(loadingParitySummary || loadingScorecard || loadingParityHistory) && (
+            <div className="parity-detail-card">
+              <p className="section-loading">Loading ML and parity sections...</p>
+            </div>
+          )}
           {parity && scorecard && (
             <div className="parity-detail-card">
               <h3>ML Parity Scorecard</h3>
@@ -921,6 +1005,11 @@ export function DiagnosticsPanel() {
       {/* GPU ACCELERATION TAB */}
       {activeTab === "gpu" && (
         <>
+          {loadingGpu && (
+            <div className="parity-detail-card">
+              <p className="section-loading">Loading GPU status...</p>
+            </div>
+          )}
           {gpuStatus && (
             <div className="parity-detail-card">
               <h3>ML GPU Acceleration Status</h3>
@@ -976,6 +1065,11 @@ export function DiagnosticsPanel() {
       {/* DATA PIPELINE TAB */}
       {activeTab === "pipeline" && (
         <>
+          {loadingPipeline && (
+            <div className="pipeline-health-card">
+              <p className="section-loading">Loading pipeline health...</p>
+            </div>
+          )}
           {pipelineHealth && (
             <div className="pipeline-health-card">
               <div className="chart-header">
@@ -1155,6 +1249,11 @@ export function DiagnosticsPanel() {
       {/* DISCORD TAB */}
       {activeTab === "discord" && (
         <>
+          {loadingDiscord && (
+            <div className="parity-detail-card">
+              <p className="section-loading">Loading Discord configuration...</p>
+            </div>
+          )}
           <div className="parity-detail-card">
             <div className="chart-header">
               <h3>Discord Notifications</h3>
@@ -1290,6 +1389,11 @@ export function DiagnosticsPanel() {
       {/* FEED HEALTH TAB */}
       {activeTab === "feed-health" && (
         <>
+          {loadingFeedHealth && (
+            <div className="parity-detail-card">
+              <p className="section-loading">Loading feed health by source...</p>
+            </div>
+          )}
           <div className="parity-detail-card">
             <div className="chart-header">
               <h3>External Feed Health</h3>
