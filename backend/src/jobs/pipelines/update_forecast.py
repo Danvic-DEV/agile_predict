@@ -106,7 +106,6 @@ def run_update_forecast_job(uow: UnitOfWork) -> ForecastRunResult:
             ml_output = run_ml_day_ahead_forecast(
                 uow=uow,
                 point_count=len(day_ahead_values),
-                bridge_day_ahead_values=deterministic_values,
                 use_gpu=gpu_active,
             )
         except Exception as exc:
