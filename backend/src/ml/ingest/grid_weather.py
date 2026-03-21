@@ -293,8 +293,10 @@ def _fetch_open_meteo(start_date: str, end_date: str) -> pd.DataFrame:
 
     # Forecast (current + next 14 days), fills gaps where archive lags
     try:
-        forecast_start = (pd.Timestamp.now(tz="UTC").normalize() - pd.Timedelta("5D")).strftime("%Y-%m-%d")
-        forecast_end = pd.Timestamp.now(tz="UTC").normalize().strftime("%Y-%m-%d")
+        # Request forecast data through the full caller-provided horizon.
+        recent_start = (pd.Timestamp.now(tz="UTC").normalize() - pd.Timedelta("5D")).strftime("%Y-%m-%d")
+        forecast_start = max(start_date, recent_start)
+        forecast_end = end_date
         params_f = {
             "latitude": 54.0,
             "longitude": 2.3,
