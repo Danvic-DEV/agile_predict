@@ -105,12 +105,14 @@ function formatIsoDate(value: string | null): string {
 
 function feedStatusClass(status: string): "ok" | "warn" | "error" | "neutral" {
   if (status === "healthy") return "ok";
+  if (status === "degraded") return "warn";
   if (status === "stale") return "warn";
   if (status === "error") return "error";
   return "neutral";
 }
 
 function feedStatusLabel(status: string): string {
+  if (status === "degraded") return "DEGRADED";
   if (status === "inactive") return "INACTIVE";
   if (status === "unknown") return "NOT OBSERVED";
   return status.toUpperCase();
@@ -1325,6 +1327,11 @@ export function DiagnosticsPanel() {
                                 Error: {entry.last_error.substring(0, 40)}...
                               </span>
                             )}
+                            {Array.isArray(entry.validation_issues) && entry.validation_issues.length > 0 && (
+                              <span className="feed-quality">
+                                Quality: {entry.validation_issues.slice(0, 2).join(", ")}
+                              </span>
+                            )}
                           </div>
                         </div>
                       );
@@ -1355,6 +1362,11 @@ export function DiagnosticsPanel() {
                             {entry.last_error && (
                               <span className="feed-error" title={entry.last_error}>
                                 Error: {entry.last_error.substring(0, 40)}...
+                              </span>
+                            )}
+                            {Array.isArray(entry.validation_issues) && entry.validation_issues.length > 0 && (
+                              <span className="feed-quality">
+                                Quality: {entry.validation_issues.slice(0, 2).join(", ")}
                               </span>
                             )}
                           </div>
@@ -1389,6 +1401,11 @@ export function DiagnosticsPanel() {
                                 Error: {entry.last_error.substring(0, 40)}...
                               </span>
                             )}
+                            {Array.isArray(entry.validation_issues) && entry.validation_issues.length > 0 && (
+                              <span className="feed-quality">
+                                Quality: {entry.validation_issues.slice(0, 2).join(", ")}
+                              </span>
+                            )}
                           </div>
                         </div>
                       );
@@ -1421,6 +1438,11 @@ export function DiagnosticsPanel() {
                                 Error: {entry.last_error.substring(0, 40)}...
                               </span>
                             )}
+                            {Array.isArray(entry.validation_issues) && entry.validation_issues.length > 0 && (
+                              <span className="feed-quality">
+                                Quality: {entry.validation_issues.slice(0, 2).join(", ")}
+                              </span>
+                            )}
                           </div>
                         </div>
                       );
@@ -1451,6 +1473,11 @@ export function DiagnosticsPanel() {
                             {entry.last_error && (
                               <span className="feed-error" title={entry.last_error}>
                                 Error: {entry.last_error.substring(0, 40)}...
+                              </span>
+                            )}
+                            {Array.isArray(entry.validation_issues) && entry.validation_issues.length > 0 && (
+                              <span className="feed-quality">
+                                Quality: {entry.validation_issues.slice(0, 2).join(", ")}
                               </span>
                             )}
                           </div>

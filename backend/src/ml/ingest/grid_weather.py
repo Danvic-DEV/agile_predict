@@ -27,6 +27,53 @@ _UA = "Mozilla/5.0 (compatible; agile-predict)"
 _TIMEOUT = 30
 
 
+def _validate_series(
+    series: pd.Series,
+    *,
+    min_rows: int,
+    min_value: float | None = None,
+    max_value: float | None = None,
+) -> tuple[str, list[str], dict]:
+    issues: list[str] = []
+    if series.empty:
+        issues.append("empty_series")
+    if len(series) < min_rows:
+        issues.append(f"low_point_count={len(series)}")
+
+    null_ratio = float(series.isna().mean()) if len(series) else 1.0
+    if null_ratio > 0.05:
+        issues.append(f"high_null_ratio={null_ratio:.3f}")
+
+    duplicate_ratio = (
+        float(series.index.duplicated().sum()) / float(len(series)) if len(series) else 0.0
+    )
+    if duplicate_ratio > 0.05:
+        issues.append(f"high_duplicate_ratio={duplicate_ratio:.3f}")
+
+    non_na = series.dropna()
+    if not non_na.empty:
+        min_seen = float(non_na.min())
+        max_seen = float(non_na.max())
+        if min_value is not None and min_seen < min_value:
+            issues.append(f"below_expected_min={min_seen:.3f}")
+        if max_value is not None and max_seen > max_value:
+            issues.append(f"above_expected_max={max_seen:.3f}")
+        if int(non_na.nunique()) <= 2:
+            issues.append("near_flat_series")
+    else:
+        min_seen = None
+        max_seen = None
+
+    status = "warn" if issues else "pass"
+    metrics = {
+        "min": min_seen,
+        "max": max_seen,
+        "null_ratio": null_ratio,
+        "duplicate_ratio": duplicate_ratio,
+    }
+    return status, issues, metrics
+
+
 def _get_json(url: str, params: dict | None = None, timeout: int = _TIMEOUT) -> dict | list:
     if params:
         url = f"{url}?{urlencode(params)}"
@@ -74,8 +121,15 @@ def _fetch_neso_demand(start_date: str) -> pd.Series:
         df.index = pd.to_datetime(df["startTime"], utc=True)
         df = df[["demand"]].sort_index().astype(float)
         df = df.resample("30min").mean().interpolate()
+        status, issues, metrics = _validate_series(df["demand"], min_rows=24, min_value=0.0, max_value=100000.0)
         record_feed_success("elexon_indo", records_received=len(df))
-        record_feed_success("neso_demand", records_received=len(df))
+        record_feed_success(
+            "neso_demand",
+            records_received=len(df),
+            validation_status=status,
+            validation_issues=issues,
+            validation_metrics=metrics,
+        )
         return df["demand"]
     except Exception as exc:  # noqa: BLE001
         record_feed_error("elexon_indo", str(exc))
@@ -95,7 +149,14 @@ def _fetch_neso_demand(start_date: str) -> pd.Series:
             ) * pd.Timedelta("30min")
             series = df["ND"].astype(float).sort_index()
             series = series.resample("30min").mean().interpolate()
-                record_feed_success("neso_demand", records_received=len(series))
+            status, issues, metrics = _validate_series(series, min_rows=24, min_value=0.0, max_value=100000.0)
+            record_feed_success(
+                "neso_demand",
+                records_received=len(series),
+                validation_status=status,
+                validation_issues=issues,
+                validation_metrics=metrics,
+            )
             return series
         except Exception as exc2:  # noqa: BLE001
             log.warning("NESO demand resource %s failed: %s", rid, exc2)
@@ -115,7 +176,14 @@ def _fetch_neso_bm_wind(start_date: str) -> pd.Series:
         df.index = pd.to_datetime(df["Datetime_GMT"], utc=True)
         series = df["Incentive_forecast"].astype(float).sort_index()
         series = series.resample("30min").mean().interpolate()
-        record_feed_success("neso_bm_wind", records_received=len(series))
+        status, issues, metrics = _validate_series(series, min_rows=24, min_value=0.0, max_value=30000.0)
+        record_feed_success(
+            "neso_bm_wind",
+            records_received=len(series),
+            validation_status=status,
+            validation_issues=issues,
+            validation_metrics=metrics,
+        )
         return series
     except Exception as exc:  # noqa: BLE001
         record_feed_error("neso_bm_wind", str(exc))
@@ -134,7 +202,21 @@ def _fetch_neso_solar_wind(start_date: str) -> pd.DataFrame:
         df.index = pd.to_datetime(df["DATETIME"], utc=True)
         out = df[["SOLAR", "WIND"]].rename(columns={"SOLAR": "solar", "WIND": "total_wind"}).astype(float).sort_index()
         out = out.resample("30min").mean().interpolate()
-        record_feed_success("neso_solar_wind", records_received=len(out))
+        status_solar, issues_solar, metrics_solar = _validate_series(
+            out["solar"], min_rows=24, min_value=0.0, max_value=30000.0
+        )
+        status_wind, issues_wind, metrics_wind = _validate_series(
+            out["total_wind"], min_rows=24, min_value=0.0, max_value=40000.0
+        )
+        issues = issues_solar + issues_wind
+        status = "warn" if (status_solar == "warn" or status_wind == "warn") else "pass"
+        record_feed_success(
+            "neso_solar_wind",
+            records_received=len(out),
+            validation_status=status,
+            validation_issues=issues,
+            validation_metrics={"solar": metrics_solar, "total_wind": metrics_wind},
+        )
         return out
     except Exception as exc:  # noqa: BLE001
         record_feed_error("neso_solar_wind", str(exc))
@@ -158,7 +240,21 @@ def _fetch_neso_embedded(start_date: str) -> pd.DataFrame:
             columns={"EMBEDDED_SOLAR_FORECAST": "solar", "EMBEDDED_WIND_FORECAST": "emb_wind"}
         ).astype(float).sort_index()
         df = df.resample("30min").mean().interpolate()
-        record_feed_success("neso_embedded_solar_wind", records_received=len(df))
+        status_solar, issues_solar, metrics_solar = _validate_series(
+            df["solar"], min_rows=24, min_value=0.0, max_value=30000.0
+        )
+        status_wind, issues_wind, metrics_wind = _validate_series(
+            df["emb_wind"], min_rows=24, min_value=0.0, max_value=40000.0
+        )
+        issues = issues_solar + issues_wind
+        status = "warn" if (status_solar == "warn" or status_wind == "warn") else "pass"
+        record_feed_success(
+            "neso_embedded_solar_wind",
+            records_received=len(df),
+            validation_status=status,
+            validation_issues=issues,
+            validation_metrics={"solar": metrics_solar, "emb_wind": metrics_wind},
+        )
         return df
     except Exception as exc:  # noqa: BLE001
         record_feed_error("neso_embedded_solar_wind", str(exc))
@@ -233,7 +329,17 @@ def _fetch_open_meteo(start_date: str, end_date: str) -> pd.DataFrame:
             merged = merged.drop(columns=[fc])
 
     output = merged[["temp_2m", "wind_10m", "rad"]].sort_index()
-    record_feed_success("weather_open_meteo", records_received=len(output))
+    status_t, issues_t, metrics_t = _validate_series(output["temp_2m"], min_rows=24, min_value=-40.0, max_value=50.0)
+    status_w, issues_w, metrics_w = _validate_series(output["wind_10m"], min_rows=24, min_value=0.0, max_value=80.0)
+    status_r, issues_r, metrics_r = _validate_series(output["rad"], min_rows=24, min_value=0.0, max_value=1400.0)
+    all_issues = issues_t + issues_w + issues_r
+    record_feed_success(
+        "weather_open_meteo",
+        records_received=len(output),
+        validation_status="warn" if (status_t == "warn" or status_w == "warn" or status_r == "warn") else "pass",
+        validation_issues=all_issues,
+        validation_metrics={"temp_2m": metrics_t, "wind_10m": metrics_w, "rad": metrics_r},
+    )
     return output
 
 

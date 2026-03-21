@@ -789,6 +789,11 @@ body {
   color: #c9d6dc;
 }
 
+.feed-quality {
+  font-size: 0.8rem;
+  color: #f2d597;
+}
+
 .feed-error {
   color: #ffb0b0;
   font-style: italic;

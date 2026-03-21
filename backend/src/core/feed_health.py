@@ -6,7 +6,7 @@ Used by diagnostics UI to show which feeds are healthy/stale/failed.
 """
 
 import json
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Optional
@@ -61,6 +61,9 @@ class FeedHealthEntry:
     last_error: Optional[str] = None
     error_count: int = 0
     last_error_time: Optional[str] = None  # ISO 8601 timestamp
+    validation_status: Optional[str] = None  # pass | warn | fail
+    validation_issues: list[str] = field(default_factory=list)
+    validation_metrics: dict = field(default_factory=dict)
     
     def to_dict(self) -> dict:
         return asdict(self)
@@ -95,7 +98,7 @@ def _read_feed_health() -> Dict[str, FeedHealthEntry]:
             source_id: FeedHealthEntry.from_dict(entry)
             for source_id, entry in data.items()
         }
-    except (json.JSONDecodeError, KeyError):
+    except (json.JSONDecodeError, KeyError, TypeError):
         # Reset if corrupted
         return {
             source_id: FeedHealthEntry(source_id=source_id, name=FEED_SOURCES[source_id]["name"])
@@ -120,6 +123,9 @@ def _write_feed_health(health: Dict[str, FeedHealthEntry]) -> None:
 def record_feed_success(
     source_id: str,
     records_received: int = 0,
+    validation_status: str = "pass",
+    validation_issues: list[str] | None = None,
+    validation_metrics: dict | None = None,
 ) -> None:
     """Record successful pull for a feed source."""
     if source_id not in FEED_SOURCES:
@@ -132,6 +138,9 @@ def record_feed_success(
     entry.records_received = records_received
     entry.last_error = None
     entry.error_count = 0
+    entry.validation_status = validation_status
+    entry.validation_issues = list(validation_issues or [])
+    entry.validation_metrics = dict(validation_metrics or {})
     
     health[source_id] = entry
     _write_feed_health(health)
@@ -151,6 +160,8 @@ def record_feed_error(
     entry.last_error = error_message
     entry.error_count = entry.error_count + 1
     entry.last_error_time = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    entry.validation_status = "fail"
+    entry.validation_issues = [error_message]
     
     health[source_id] = entry
     _write_feed_health(health)
@@ -169,6 +180,8 @@ def get_feed_health() -> Dict[str, dict]:
         status = "unknown"
         if entry.last_error is not None:
             status = "error"
+        elif entry.validation_status in {"warn", "fail"}:
+            status = "degraded"
         elif entry.last_successful_pull is not None:
             last_pull_time = datetime.fromisoformat(entry.last_successful_pull.replace("Z", "+00:00"))
             seconds_since_pull = (now - last_pull_time).total_seconds()
@@ -190,6 +203,9 @@ def get_feed_health() -> Dict[str, dict]:
             "last_error": entry.last_error,
             "error_count": entry.error_count,
             "last_error_time": entry.last_error_time,
+            "validation_status": entry.validation_status,
+            "validation_issues": entry.validation_issues,
+            "validation_metrics": entry.validation_metrics,
             "expected_frequency_seconds": config.get("freq_seconds"),
             "staleness_threshold_seconds": config.get("staleness_threshold_seconds"),
         }

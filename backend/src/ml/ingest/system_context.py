@@ -146,7 +146,24 @@ def fetch_fuelinst_context(start_dt: datetime, end_dt: datetime) -> pd.DataFrame
         out["interconnector_net_mw"] = pivot[int_cols].sum(axis=1) if int_cols else 0.0
 
         out = out.resample("30min").mean().interpolate()
-        record_feed_success("elexon_fuelinst", records_received=len(out))
+        issues: list[str] = []
+        if len(out) < 24:
+            issues.append(f"low_point_count={len(out)}")
+        if out.isna().mean().max() > 0.05:
+            issues.append("high_null_ratio")
+        if out["wind_mw"].max() > 50000 or out["gas_mw"].max() > 80000:
+            issues.append("out_of_expected_generation_range")
+
+        record_feed_success(
+            "elexon_fuelinst",
+            records_received=len(out),
+            validation_status="warn" if issues else "pass",
+            validation_issues=issues,
+            validation_metrics={
+                "max_gas_mw": float(out["gas_mw"].max()) if not out.empty else None,
+                "max_wind_mw": float(out["wind_mw"].max()) if not out.empty else None,
+            },
+        )
         return out
     except Exception as exc:  # noqa: BLE001
         record_feed_error("elexon_fuelinst", str(exc))

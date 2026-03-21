@@ -60,7 +60,27 @@ def _ingest_stage(
                 idx = idx.tz_convert("UTC")
 
             series = pd.Series(index=idx, data=[float(v) for _, v in sorted_points], dtype=float, name="day_ahead")
-            record_feed_success("nordpool_da", records_received=len(series))
+            issues: list[str] = []
+            if len(series) < 24:
+                issues.append(f"low_point_count={len(series)}")
+            if float(series.isna().mean()) > 0.0:
+                issues.append("contains_nulls")
+            if series.nunique(dropna=True) <= 2:
+                issues.append("near_flat_series")
+            if float(series.min()) < -500.0 or float(series.max()) > 2000.0:
+                issues.append("out_of_expected_price_range")
+
+            record_feed_success(
+                "nordpool_da",
+                records_received=len(series),
+                validation_status="warn" if issues else "pass",
+                validation_issues=issues,
+                validation_metrics={
+                    "min": float(series.min()),
+                    "max": float(series.max()),
+                    "unique": int(series.nunique(dropna=True)),
+                },
+            )
             return series, "nordpool", None, attempt, len(series)
         except Exception as exc:
             last_error = str(exc)
