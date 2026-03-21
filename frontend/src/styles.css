@@ -360,6 +360,53 @@ body {
   color: #c9d6dc;
 }
 
+.truth-verdict-banner {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(201, 214, 220, 0.3);
+  background: rgba(17, 26, 35, 0.55);
+  padding: 10px 12px;
+}
+
+.truth-verdict-banner strong {
+  font-size: 0.9rem;
+  letter-spacing: 0.03em;
+}
+
+.truth-verdict-banner span {
+  font-size: 0.82rem;
+  color: #c9d6dc;
+}
+
+.truth-verdict-banner.pass {
+  border-color: rgba(185, 240, 197, 0.5);
+  background: rgba(16, 70, 40, 0.35);
+}
+
+.truth-verdict-banner.pass strong {
+  color: #b9f0c5;
+}
+
+.truth-verdict-banner.fail {
+  border-color: rgba(255, 176, 176, 0.55);
+  background: rgba(110, 28, 28, 0.35);
+}
+
+.truth-verdict-banner.fail strong {
+  color: #ffb0b0;
+}
+
+.truth-verdict-banner.pending {
+  border-color: rgba(201, 214, 220, 0.35);
+  background: rgba(44, 58, 75, 0.4);
+}
+
+.truth-verdict-banner.pending strong {
+  color: #d9e4ea;
+}
+
 .threshold-list {
   display: flex;
   flex-wrap: wrap;

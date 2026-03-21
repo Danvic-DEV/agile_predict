@@ -570,6 +570,58 @@ export function DiagnosticsPanel() {
     return "ok";
   })();
 
+  const truthIssueCodes = new Set((pipelineTruthAudit?.issues ?? []).map((issue) => issue.code));
+  const truthVerdict: { state: "pass" | "fail" | "pending"; title: string; detail: string } = (() => {
+    if (loadingPipelineTruth || !pipelineTruthAudit) {
+      return {
+        state: "pending",
+        title: "Deploy Verdict: CHECKING",
+        detail: "Refreshing persisted forecast integrity signals...",
+      };
+    }
+
+    if (truthIssueCodes.has("missing_day_ahead_values")) {
+      return {
+        state: "fail",
+        title: "Deploy Verdict: FAIL",
+        detail: "Operational forecast has no non-null day-ahead values.",
+      };
+    }
+
+    if (pipelineTruthAudit.latest_forecast_rows < 48) {
+      return {
+        state: "fail",
+        title: "Deploy Verdict: FAIL",
+        detail: "Latest operational forecast row count is below the minimum threshold.",
+      };
+    }
+
+    if (
+      pipelineTruthAudit.latest_data_freshness_minutes !== null &&
+      pipelineTruthAudit.latest_data_freshness_minutes > 240
+    ) {
+      return {
+        state: "fail",
+        title: "Deploy Verdict: FAIL",
+        detail: "Operational forecast data is stale.",
+      };
+    }
+
+    if (pipelineTruthAudit.trust_level === "low") {
+      return {
+        state: "fail",
+        title: "Deploy Verdict: FAIL",
+        detail: "Truth audit trust level is low.",
+      };
+    }
+
+    return {
+      state: "pass",
+      title: "Deploy Verdict: PASS",
+      detail: "Truth audit does not indicate blocking persisted-data integrity issues.",
+    };
+  })();
+
   async function handleSeedBundle() {
     setActiveActionKind("seed");
     setActionState("running");
@@ -1183,6 +1235,11 @@ export function DiagnosticsPanel() {
       {/* DATA PIPELINE TAB */}
       {activeTab === "pipeline" && (
         <>
+          <div className={`truth-verdict-banner ${truthVerdict.state}`}>
+            <strong>{truthVerdict.title}</strong>
+            <span>{truthVerdict.detail}</span>
+          </div>
+
           {(loadingPipelineTruth || pipelineTruthAudit) && (
             <div className={`pipeline-health-card progressive-card ${loadingPipelineTruth ? "is-loading" : "is-ready"}`}>
               <div className="chart-header">
