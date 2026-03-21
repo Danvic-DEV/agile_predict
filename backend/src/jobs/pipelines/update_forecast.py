@@ -188,10 +188,33 @@ def run_update_forecast_job(uow: UnitOfWork) -> ForecastRunResult:
         )
         for ts, row in forward_features_df.iloc[:forecast_points].iterrows()
     ]
-    if len(feature_rows) < forecast_points:
-        raise RuntimeError(
-            f"insufficient forward feature rows for forecast horizon: have={len(feature_rows)} need={forecast_points}"
+    available_feature_points = len(feature_rows)
+    if available_feature_points == 0:
+        raise RuntimeError("insufficient forward feature rows for forecast horizon: have=0")
+
+    forward_feature_warning: str | None = None
+    if available_feature_points < forecast_points:
+        missing_points = forecast_points - available_feature_points
+        missing_days = missing_points / 48.0
+        forward_feature_warning = (
+            f"insufficient forward feature rows for full horizon: "
+            f"have={available_feature_points} need={forecast_points} "
+            f"(missing={missing_points} slots, {missing_days:.2f} days)"
         )
+        log.warning(
+            "Truncating forecast horizon to available real features: %s",
+            forward_feature_warning,
+        )
+        forecast_points = available_feature_points
+        day_ahead_values = tuple(day_ahead_values[:forecast_points])
+        if day_ahead_low_values is not None:
+            day_ahead_low_values = tuple(day_ahead_low_values[:forecast_points])
+        if day_ahead_high_values is not None:
+            day_ahead_high_values = tuple(day_ahead_high_values[:forecast_points])
+        feature_rows = feature_rows[:forecast_points]
+
+    if forward_feature_warning is not None:
+        ml_error = f"{ml_error}; {forward_feature_warning}" if ml_error else forward_feature_warning
 
     result = write_bootstrap_bundle(
         uow=uow,
@@ -215,7 +238,7 @@ def run_update_forecast_job(uow: UnitOfWork) -> ForecastRunResult:
         records_written=records_written,
         forecast_name=result.forecast_name,
         source=source,
-        day_ahead_points=len(day_ahead_values),
+        day_ahead_points=forecast_points,
     )
 
     # ------------------------------------------------------------------
