@@ -37,6 +37,11 @@ class MlParityForecastOutput:
     range_mode: str
 
 
+def _predict_with_dmatrix(model: xg.XGBRegressor, features: pd.DataFrame) -> np.ndarray:
+    dmatrix = xg.DMatrix(features.to_numpy(), feature_names=list(features.columns))
+    return model.get_booster().predict(dmatrix)
+
+
 def _apply_legacy_scale_blend(
     preds: pd.Series,
     lows: pd.Series,
@@ -294,7 +299,7 @@ def run_ml_day_ahead_forecast(
             "device": "cuda",
         }
 
-    model = xg.XGBRegressor(
+    common_model_kwargs = dict(
         objective="reg:squarederror",
         booster="dart",
         gamma=0.2,
@@ -302,12 +307,19 @@ def run_ml_day_ahead_forecast(
         n_estimators=200,
         max_depth=10,
         colsample_bytree=1,
+    )
+    model = xg.XGBRegressor(
+        **common_model_kwargs,
         **model_kwargs,
     )
 
     scores: np.ndarray | None = None
     if len(train_x) >= 5:
-        scores = cross_val_score(model, train_x, train_y, cv=5, scoring="neg_root_mean_squared_error")
+        cv_model_kwargs = dict(common_model_kwargs)
+        if not use_gpu:
+            cv_model_kwargs.update(model_kwargs)
+        cv_model = xg.XGBRegressor(**cv_model_kwargs)
+        scores = cross_val_score(cv_model, train_x, train_y, cv=5, scoring="neg_root_mean_squared_error")
 
     model.fit(train_x, train_y, sample_weight=sample_weights, verbose=False)
 
@@ -332,14 +344,15 @@ def run_ml_day_ahead_forecast(
 
     feature_frame = fc.reindex(columns=list(LEGACY_FEATURES)).astype(float)
     feature_frame = feature_frame.ffill().bfill()
-    preds = pd.Series(model.predict(feature_frame), index=fc.index, name="day_ahead").astype(float)
+    preds = pd.Series(_predict_with_dmatrix(model, feature_frame), index=fc.index, name="day_ahead").astype(float)
 
     range_mode = "fallback"
     lows = preds * 0.9
     highs = preds * 1.1
     if (len(test_df) > 10) and (not no_ranges):
         results = test_df[["dt", "day_ahead"]].copy()
-        results["pred"] = model.predict(test_df[list(LEGACY_FEATURES)].astype(float))
+        test_features = test_df[list(LEGACY_FEATURES)].astype(float)
+        results["pred"] = _predict_with_dmatrix(model, test_features)
 
         kde = KernelDensity()
         kde.fit(results[["dt", "pred", "day_ahead"]].to_numpy())
