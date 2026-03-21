@@ -60,3 +60,25 @@ def test_apply_legacy_scale_blend_uses_bridge_window_with_shift_5() -> None:
     assert blended_pred.iloc[3] == 84.0
     assert blended_low.iloc[3] == 79.0
     assert blended_high.iloc[3] == 89.0
+
+
+def test_apply_legacy_scale_blend_preserves_model_when_reference_index_misaligned() -> None:
+    preds_idx = pd.date_range("2026-03-17T22:51:04Z", periods=4, freq="30min", tz="UTC")
+    ref_idx = pd.date_range("2026-03-17T22:30:00Z", periods=4, freq="30min", tz="UTC")
+
+    preds = pd.Series([120.0, 121.0, 122.0, 123.0], index=preds_idx)
+    lows = pd.Series([110.0, 111.0, 112.0, 113.0], index=preds_idx)
+    highs = pd.Series([130.0, 131.0, 132.0, 133.0], index=preds_idx)
+    ref = pd.Series([80.0, 81.0, 82.0, 83.0], index=ref_idx)
+
+    blended_pred, blended_low, blended_high = _apply_legacy_scale_blend(
+        preds=preds,
+        lows=lows,
+        highs=highs,
+        reference_day_ahead=ref,
+    )
+
+    assert float(blended_pred.min()) > 0.0
+    assert blended_pred.tolist() == preds.tolist()
+    assert blended_low.tolist() == lows.tolist()
+    assert blended_high.tolist() == highs.tolist()

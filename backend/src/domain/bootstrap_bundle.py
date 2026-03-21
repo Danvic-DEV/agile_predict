@@ -129,6 +129,14 @@ def _day_ahead_to_agile(value: float, dt: datetime, region: str) -> float:
     return agile
 
 
+def _align_to_half_hour(dt: datetime) -> datetime:
+    aligned = dt.astimezone(timezone.utc).replace(second=0, microsecond=0)
+    minute = aligned.minute
+    if minute < 30:
+        return aligned.replace(minute=0)
+    return aligned.replace(minute=30)
+
+
 def write_bootstrap_bundle(uow: BootstrapBundleUoW, config: BootstrapBundleConfig) -> BootstrapBundleResult:
     now = datetime.now(timezone.utc)
     forecast_name = now.strftime("%Y-%m-%d %H:%M:%S.%f")
@@ -156,7 +164,7 @@ def write_bootstrap_bundle(uow: BootstrapBundleUoW, config: BootstrapBundleConfi
             uow.forecast_data_writes.delete_for_forecast(forecast.id)
             uow.agile_data_writes.delete_for_forecast(forecast.id)
 
-    anchor_time = forecast.created_at if config.idempotency_key else now
+    anchor_time = _align_to_half_hour(forecast.created_at if config.idempotency_key else now)
 
     day_ahead_values = tuple(float(v) for v in config.day_ahead_values) if config.day_ahead_values else None
     day_ahead_low_values = tuple(float(v) for v in config.day_ahead_low_values) if config.day_ahead_low_values else None

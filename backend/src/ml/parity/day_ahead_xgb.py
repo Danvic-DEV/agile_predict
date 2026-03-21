@@ -48,6 +48,8 @@ def _apply_legacy_scale_blend(
         return preds, lows, highs
 
     ref = reference_day_ahead.sort_index().copy()
+    ref.index = pd.to_datetime(ref.index, utc=True).floor("30min")
+    ref = ref.groupby(ref.index).mean()
     if ref.empty:
         return preds, lows, highs
 
@@ -64,6 +66,8 @@ def _apply_legacy_scale_blend(
 
     if bridge_day_ahead is not None and not bridge_day_ahead.empty:
         bridge = bridge_day_ahead.sort_index().copy()
+        bridge.index = pd.to_datetime(bridge.index, utc=True).floor("30min")
+        bridge = bridge.groupby(bridge.index).mean()
         bridge = bridge[bridge.index > agile_end]
         if not bridge.empty:
             bridge_window = pd.date_range(bridge.index[0], bridge.index[-1], freq="30min", tz="UTC")
@@ -84,9 +88,15 @@ def _apply_legacy_scale_blend(
     else:
         reference_full = pd.concat([ref, bridge]).sort_index()
     scale_factors = pd.concat(
-        [scale_factors, reference_full.reindex(scale_factors.index).fillna(0.0).rename("day_ahead")],
+        [scale_factors, reference_full.reindex(scale_factors.index).rename("day_ahead")],
         axis=1,
     )
+
+    # If reference data is missing for a slot, preserve model output instead of pinning to zero.
+    missing_reference = scale_factors["day_ahead"].isna()
+    if missing_reference.any():
+        scale_factors.loc[missing_reference, "mult"] = 1.0
+        scale_factors.loc[missing_reference, "shift"] = 0.0
 
     aligned_mult = scale_factors["mult"].reindex(preds.index).fillna(1.0)
     aligned_shift = scale_factors["shift"].reindex(preds.index).fillna(0.0)
