@@ -1,5 +1,6 @@
 __pycache__/
 .venv/
+.venv311/
 .local/
 *.sqlite3
 *.bat

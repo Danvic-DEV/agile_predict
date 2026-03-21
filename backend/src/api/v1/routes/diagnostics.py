@@ -479,9 +479,31 @@ def ingest_pipeline_health(uow: UnitOfWorkDep) -> IngestPipelineHealth:
 def pipeline_truth_audit(uow: UnitOfWorkDep) -> PipelineTruthAudit:
     now = datetime.now(timezone.utc)
 
-    latest_forecast = uow.session.execute(
-        select(ForecastORM).order_by(ForecastORM.created_at.desc()).limit(1)
-    ).scalar_one_or_none()
+    update_state = read_last_update_job_state() or {}
+    preferred_forecast_name = update_state.get("forecast_name")
+
+    latest_forecast = None
+
+    if preferred_forecast_name:
+        latest_forecast = uow.session.execute(
+            select(ForecastORM)
+            .where(ForecastORM.name == preferred_forecast_name)
+            .order_by(ForecastORM.created_at.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+
+    if latest_forecast is None:
+        latest_forecast = uow.session.execute(
+            select(ForecastORM)
+            .where(~ForecastORM.name.like("bundle::history-%"))
+            .order_by(ForecastORM.created_at.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+
+    if latest_forecast is None:
+        latest_forecast = uow.session.execute(
+            select(ForecastORM).order_by(ForecastORM.created_at.desc()).limit(1)
+        ).scalar_one_or_none()
 
     if latest_forecast is None:
         return PipelineTruthAudit(
