@@ -409,6 +409,7 @@ def fetch_grid_weather_features(
     combined = pd.concat(list(frames.values()), axis=1)
     combined.columns = list(frames.keys())
     combined = combined.sort_index()
+    combined_before_fill = combined.copy()
 
     # Ensure required columns exist (fill with column mean if partial)
     required = ["bm_wind", "solar", "emb_wind", "demand", "temp_2m", "wind_10m", "rad"]
@@ -419,6 +420,18 @@ def fetch_grid_weather_features(
 
     combined = combined[required]
     combined = combined.ffill().bfill().astype(float)
+
+    # Do not extrapolate stale feature values indefinitely into the future.
+    # Limit output to the strictest real-data coverage across available columns.
+    coverage_ends = []
+    for col in required:
+        if col in combined_before_fill.columns:
+            non_na = combined_before_fill[col].dropna()
+            if not non_na.empty:
+                coverage_ends.append(non_na.index.max())
+    if coverage_ends:
+        strict_end = min(coverage_ends)
+        combined = combined.loc[:strict_end]
 
     # Drop rows where more than half the required columns are still NaN
     combined = combined.dropna(thresh=len(required) // 2 + 1)
