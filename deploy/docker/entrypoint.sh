@@ -75,4 +75,10 @@ SQL
   rm -f /tmp/init-local-db.sql
 fi
 
+# Run Alembic migrations
+echo "Running database migrations..."
+alembic upgrade head || {
+  echo "WARNING: Alembic migrations failed, attempting fallback to metadata.create_all()"
+}
+
 uvicorn src.main:app --host "${API_HOST:-0.0.0.0}" --port "${API_PORT:-8000}"

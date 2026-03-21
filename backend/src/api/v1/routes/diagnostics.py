@@ -20,13 +20,14 @@ from src.core.ml_runtime_config import read_ml_runtime_config, write_ml_runtime_
 from src.core.settings import settings
 from src.core.update_job_state import read_last_update_job_state, read_update_job_history
 from src.ml.gpu_support import probe_xgboost_cuda
-from src.repositories.sql_models import ExternalSystemContextORM, ForecastDataORM, ForecastORM, PriceHistoryORM
+from src.repositories.sql_models import AgileActualORM, ExternalSystemContextORM, ForecastDataORM, ForecastORM, PriceHistoryORM
 from src.schemas.diagnostics import (
     DiscordConfigRequest,
     DiscordConfigStatus,
     DiscordNotificationPreferences,
     DiscordTestResponse,
     ExternalSystemContextHealth,
+    ForecastAccuracyMetrics,
     IngestPipelineHealth,
     PipelineTruthAudit,
     PipelineTruthIssue,
@@ -856,3 +857,141 @@ def get_current_feed_health() -> dict:
     - error_count: total error count
     """
     return get_feed_health()
+
+
+@router.get("/forecast-accuracy", response_model=ForecastAccuracyMetrics)
+def forecast_accuracy_measurement(uow: UnitOfWorkDep, region: str = "G", days: int = 14) -> ForecastAccuracyMetrics:
+    """Measure forecast accuracy vs actual released Agile prices.
+    
+    Compares forecasted Agile prices (from AgileDataORM) against actual released prices 
+    (from AgileActualORM) for retrospective accuracy assessment.
+    
+    Args:
+        region: UK region code (A-P, X) - default G
+        days: lookback window in days (1-365) - default 14
+    
+    Returns:
+        ForecastAccuracyMetrics with error statistics and sample points.
+    """
+    from sqlalchemy import and_, desc
+    from src.repositories.sql_models import AgileDataORM, AgileActualORM
+    import statistics as st
+    
+    # Validate inputs
+    valid_regions = ["A", "B", "C", "D", "E", "F", "G", "H", "J", "K", "L", "M", "N", "P", "X"]
+    if region.upper() not in valid_regions:
+        raise HTTPException(status_code=400, detail=f"Invalid region: {region}. Must be one of {valid_regions}")
+    
+    bounded_days = max(1, min(int(days), 365))
+    now_utc = datetime.now(timezone.utc)
+    since = now_utc - timedelta(days=bounded_days)
+    
+    # Fetch forecast data (most recent forecast)
+    latest_forecast = (
+        uow.session.execute(
+            select(ForecastORM).order_by(desc(ForecastORM.created_at)).limit(1)
+        )
+        .scalars()
+        .first()
+    )
+    
+    if not latest_forecast:
+        raise HTTPException(status_code=404, detail="No forecasts available yet")
+    
+    # Fetch forecasted Agile prices
+    forecast_rows = (
+        uow.session.execute(
+            select(AgileDataORM).where(
+                and_(
+                    AgileDataORM.forecast_id == latest_forecast.id,
+                    AgileDataORM.region == region.upper(),
+                    AgileDataORM.date_time >= since,
+                    AgileDataORM.date_time <= now_utc,
+                )
+            )
+            .order_by(AgileDataORM.date_time)
+        )
+        .scalars()
+        .all()
+    )
+    
+    # Fetch actual Agile prices
+    actual_rows = (
+        uow.session.execute(
+            select(AgileActualORM).where(
+                and_(
+                    AgileActualORM.region == region.upper(),
+                    AgileActualORM.date_time >= since,
+                    AgileActualORM.date_time <= now_utc,
+                )
+            )
+            .order_by(AgileActualORM.date_time)
+        )
+        .scalars()
+        .all()
+    )
+    
+    # Match forecast vs actual by date_time
+    actual_by_dt = {row.date_time: row.agile_actual for row in actual_rows}
+    matched_points: list[ForecastAccuracyPoint] = []
+    
+    for forecast_row in forecast_rows:
+        actual_price = actual_by_dt.get(forecast_row.date_time)
+        if actual_price is None:
+            continue
+        
+        forecast_price = forecast_row.agile_pred
+        error_pence = forecast_price - actual_price  # +ve = too high
+        abs_error = abs(error_pence)
+        error_percent = (error_pence / actual_price * 100.0) if actual_price != 0 else 0.0
+        
+        matched_points.append(
+            ForecastAccuracyPoint(
+                date_time=forecast_row.date_time,
+                region=region.upper(),
+                forecast_agile=float(forecast_price),
+                actual_agile=float(actual_price),
+                error_pence=float(error_pence),
+                error_percent=float(error_percent),
+                abs_error_pence=float(abs_error),
+            )
+        )
+    
+    if not matched_points:
+        raise HTTPException(status_code=404, detail=f"No matched forecast/actual data for region {region} in last {bounded_days} days")
+    
+    # Compute metrics
+    abs_errors = [p.abs_error_pence for p in matched_points]
+    signed_errors = [p.error_pence for p in matched_points]
+    
+    mae = st.mean(abs_errors)
+    median_ae = st.median(abs_errors) if len(abs_errors) > 1 else abs_errors[0]
+    stdev_ae = st.stdev(abs_errors) if len(abs_errors) > 1 else 0.0
+    p95_idx = min(len(abs_errors) - 1, int(round(0.95 * (len(abs_errors) - 1))))
+    sorted_abs = sorted(abs_errors)
+    p95_ae = sorted_abs[p95_idx]
+    max_ae = max(abs_errors)
+    
+    mean_bias = st.mean(signed_errors)
+    actual_prices = [p.actual_agile for p in matched_points]
+    mean_actual = st.mean(actual_prices) if actual_prices else 1.0
+    bias_percent = (mean_bias / mean_actual * 100.0) if mean_actual != 0 else 0.0
+    
+    return ForecastAccuracyMetrics(
+        generated_at=now_utc,
+        region=region.upper(),
+        days_of_data=bounded_days,
+        sample_count=len(matched_points),
+        mean_absolute_error_pence=round(mae, 6),
+        median_absolute_error_pence=round(median_ae, 6),
+        std_dev_error_pence=round(stdev_ae, 6),
+        p95_absolute_error_pence=round(p95_ae, 6),
+        max_absolute_error_pence=round(max_ae, 6),
+        mean_forecast_bias_pence=round(mean_bias, 6),
+        forecast_bias_percent=round(bias_percent, 4),
+        forecast_points_available=len(forecast_rows),
+        actual_points_available=len(actual_rows),
+        matched_points=len(matched_points),
+        data_coverage_percent=round(len(matched_points) / max(len(forecast_rows), 1) * 100.0, 2),
+        sample_points=matched_points[:5],
+    )

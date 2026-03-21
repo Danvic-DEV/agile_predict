@@ -201,3 +201,42 @@ class ExternalSystemContextHealth(BaseModel):
     fuel_mix_rows: int
     interconnector_rows: int
     pumped_storage_rows: int
+
+
+class ForecastAccuracyPoint(BaseModel):
+    """Single data point comparing forecast vs actual price."""
+    date_time: datetime
+    region: str
+    forecast_agile: float
+    actual_agile: float
+    error_pence: float
+    error_percent: float
+    abs_error_pence: float
+
+
+class ForecastAccuracyMetrics(BaseModel):
+    """Aggregated accuracy metrics for forecast vs actual prices."""
+    generated_at: datetime
+    region: str
+    days_of_data: int
+    sample_count: int
+    
+    # Error statistics (in pence/kWh)
+    mean_absolute_error_pence: float
+    median_absolute_error_pence: float
+    std_dev_error_pence: float
+    p95_absolute_error_pence: float
+    max_absolute_error_pence: float
+    
+    # Directional bias
+    mean_forecast_bias_pence: float  # Positive = forecast too high
+    forecast_bias_percent: float
+    
+    # Data quality
+    forecast_points_available: int
+    actual_points_available: int
+    matched_points: int
+    data_coverage_percent: float
+    
+    # Sample points (first 5 for inspection)
+    sample_points: list[ForecastAccuracyPoint]

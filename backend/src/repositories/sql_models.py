@@ -69,6 +69,19 @@ class ForecastDataORM(Base):
     demand: Mapped[float] = mapped_column(Float, nullable=False)
 
 
+class AgileActualORM(Base):
+    __tablename__ = "prices_agile_actual"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    date_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    region: Mapped[str] = mapped_column(String(1), nullable=False)
+    agile_actual: Mapped[float] = mapped_column(Float, nullable=False)
+    # Composite unique key: one price per (region, datetime) pair
+    __table_args__ = (
+        __import__("sqlalchemy").UniqueConstraint("date_time", "region", name="uq_agile_actual_dt_region"),
+    )
+
+
 class ExternalSystemContextORM(Base):
     __tablename__ = "backend_external_system_context"
 

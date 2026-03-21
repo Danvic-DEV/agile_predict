@@ -25,6 +25,7 @@ from src.domain.bootstrap_bundle import (
 from src.domain.forecast_pipeline import ForecastRunResult, run_forecast_pipeline
 from src.ml.ingest.grid_weather import fetch_grid_weather_features
 from src.ml.ingest.nordpool import fetch_day_ahead_prices
+from src.ml.ingest.octopus_agile import fetch_agile_prices_all_regions
 from src.ml.ingest.system_context import fetch_system_context_features
 from src.ml.gpu_support import probe_xgboost_cuda
 from src.ml.parity.day_ahead_xgb import check_ml_training_readiness, run_ml_day_ahead_forecast
@@ -253,6 +254,50 @@ def run_update_forecast_job(uow: UnitOfWork) -> ForecastRunResult:
             log.info("Upserted %s Nordpool price rows into PriceHistoryORM", price_upsert_count)
     except Exception as exc:  # noqa: BLE001
         log.warning("Nordpool price upsert failed (non-fatal): %s", exc)
+
+    # ------------------------------------------------------------------
+    # Step 3a: fetch and collect actual released Agile prices from Octopus
+    # for all 15 UK regions. These are the retroactively measured prices
+    # used for accuracy comparison vs forecasts.
+    # ------------------------------------------------------------------
+    agile_actual_upsert_count = 0
+    try:
+        now_utc = datetime.now(timezone.utc)
+        # Collect last 30 days by default; can be extended for backfill
+        from_date = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+        agile_prices_by_region = fetch_agile_prices_all_regions(
+            from_date=from_date,
+            to_date=now_utc,
+            timeout=20,
+        )
+
+        # Flatten to upsert rows: one row per (date_time, region, agile_actual) triplet
+        agile_rows = []
+        total_prices = 0
+        for region, prices_dict in agile_prices_by_region.items():
+            for dt, price in prices_dict.items():
+                agile_rows.append(
+                    {
+                        "date_time": dt,
+                        "region": region,
+                        "agile_actual": float(price),
+                    }
+                )
+                total_prices += 1
+
+        if agile_rows:
+            agile_actual_upsert_count = uow.agile_actual_writes.upsert_many(agile_rows)
+            log.info(
+                "Upserted %s Agile actual price rows (%d total prices, %d regions)",
+                agile_actual_upsert_count,
+                total_prices,
+                len(agile_prices_by_region),
+            )
+        else:
+            log.warning("No Agile prices fetched from Octopus API")
+    except Exception as exc:  # noqa: BLE001
+        log.error("Agile actual price ingest failed (fail-closed): %s", exc)
+        raise
 
     # ------------------------------------------------------------------
     # Step 3b: ingest additional system-context feeds for future Wave A

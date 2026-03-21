@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
+from src.repositories.agile_actual_write_repo import AgileActualWriteRepository
 from src.repositories.agile_data_repo import AgileDataRepository
 from src.repositories.agile_data_write_repo import AgileDataWriteRepository
 from src.repositories.forecast_data_repo import ForecastDataRepository
@@ -22,6 +23,7 @@ class UnitOfWork:
         self.forecast_data_writes = ForecastDataWriteRepository(session)
         self.agile_data = AgileDataRepository(session)
         self.agile_data_writes = AgileDataWriteRepository(session)
+        self.agile_actual_writes = AgileActualWriteRepository(session)
         self.price_history = PriceHistoryRepository(session)
         self.price_history_writes = PriceHistoryWriteRepository(session)
         self.external_system_context_writes = ExternalSystemContextWriteRepository(session)
