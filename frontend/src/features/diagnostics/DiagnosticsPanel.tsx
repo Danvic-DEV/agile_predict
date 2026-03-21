@@ -118,6 +118,13 @@ function feedStatusLabel(status: string): string {
   return status.toUpperCase();
 }
 
+function renderTabHealthBadge(state: "ok" | "warn" | "bad" | "loading"): string {
+  if (state === "loading") return "…";
+  if (state === "ok") return "OK";
+  if (state === "warn") return "WARN";
+  return "ERR";
+}
+
 function minutesSince(value: string | null, nowMs: number): number | null {
   if (!value) {
     return null;
@@ -504,6 +511,40 @@ export function DiagnosticsPanel() {
   const featuresPath = buildSparklinePath(growthSnapshots.map((s) => s.featureRows));
   const trendHasData = growthSnapshots.length >= 2;
 
+  const statusTabHealth: "ok" | "warn" | "bad" | "loading" =
+    loadingDiagnostics ? "loading" : error ? "bad" : "ok";
+
+  const mlTabHealth: "ok" | "warn" | "bad" | "loading" =
+    loadingParitySummary || loadingScorecard
+      ? "loading"
+      : parityError
+        ? "bad"
+        : parity?.all_passed === false
+          ? "warn"
+          : "ok";
+
+  const gpuTabHealth: "ok" | "warn" | "bad" | "loading" =
+    loadingGpu ? "loading" : gpuStatus?.compatible === false ? "warn" : "ok";
+
+  const pipelineTabHealth: "ok" | "warn" | "bad" | "loading" =
+    loadingPipeline
+      ? "loading"
+      : pipelineHealth?.all_sources_healthy === false
+        ? "warn"
+        : "ok";
+
+  const discordTabHealth: "ok" | "warn" | "bad" | "loading" =
+    loadingDiscord ? "loading" : discordError ? "bad" : discordEnabled ? "ok" : "warn";
+
+  const feedHealthTabHealth: "ok" | "warn" | "bad" | "loading" = (() => {
+    if (loadingFeedHealth) return "loading";
+    if (!feedHealth) return "warn";
+    const entries = Object.values(feedHealth) as Array<{ status?: string }>;
+    if (entries.some((entry) => entry.status === "error")) return "bad";
+    if (entries.some((entry) => entry.status === "degraded" || entry.status === "stale")) return "warn";
+    return "ok";
+  })();
+
   async function handleSeedBundle() {
     setActiveActionKind("seed");
     setActionState("running");
@@ -629,6 +670,7 @@ export function DiagnosticsPanel() {
           onClick={() => setActiveTab("status")}
         >
           Status
+          <span className={`tab-health-chip ${statusTabHealth}`}>{renderTabHealthBadge(statusTabHealth)}</span>
         </button>
         <button
           type="button"
@@ -636,6 +678,7 @@ export function DiagnosticsPanel() {
           onClick={() => setActiveTab("ml-model")}
         >
           ML Model
+          <span className={`tab-health-chip ${mlTabHealth}`}>{renderTabHealthBadge(mlTabHealth)}</span>
         </button>
         <button
           type="button"
@@ -643,6 +686,7 @@ export function DiagnosticsPanel() {
           onClick={() => setActiveTab("gpu")}
         >
           GPU Acceleration
+          <span className={`tab-health-chip ${gpuTabHealth}`}>{renderTabHealthBadge(gpuTabHealth)}</span>
         </button>
         <button
           type="button"
@@ -650,6 +694,7 @@ export function DiagnosticsPanel() {
           onClick={() => setActiveTab("pipeline")}
         >
           Data Pipeline
+          <span className={`tab-health-chip ${pipelineTabHealth}`}>{renderTabHealthBadge(pipelineTabHealth)}</span>
         </button>
         <button
           type="button"
@@ -664,6 +709,7 @@ export function DiagnosticsPanel() {
           onClick={() => setActiveTab("discord")}
         >
           Discord
+          <span className={`tab-health-chip ${discordTabHealth}`}>{renderTabHealthBadge(discordTabHealth)}</span>
         </button>
         <button
           type="button"
@@ -671,6 +717,7 @@ export function DiagnosticsPanel() {
           onClick={() => setActiveTab("feed-health")}
         >
           Feed Health
+          <span className={`tab-health-chip ${feedHealthTabHealth}`}>{renderTabHealthBadge(feedHealthTabHealth)}</span>
         </button>
       </div>
 
@@ -698,9 +745,12 @@ export function DiagnosticsPanel() {
             <div className={`growth-visibility-card progressive-card ${loadingDiagnostics || loadingScorecard ? "is-loading" : "is-ready"}`}>
               <div className="chart-header">
                 <h3>Data Growth and Readiness</h3>
-                <span className={readinessComplete ? "growth-badge ready" : "growth-badge warming"}>
-                  {readinessComplete ? "READY" : "WARMING UP"}
-                </span>
+                <div className="header-badges">
+                  <span className={readinessComplete ? "growth-badge ready" : "growth-badge warming"}>
+                    {readinessComplete ? "READY" : "WARMING UP"}
+                  </span>
+                  <span className={`section-health-pill ${statusTabHealth}`}>{renderTabHealthBadge(statusTabHealth)}</span>
+                </div>
               </div>
               <p className="section-meta">{formatSectionLoadedAt(scorecardLoadedAt || diagnosticsLoadedAt)}</p>
 
@@ -827,7 +877,10 @@ export function DiagnosticsPanel() {
           )}
           {parity && scorecard && (
             <div className={`parity-detail-card progressive-card ${loadingParitySummary || loadingScorecard ? "is-loading" : "is-ready"}`}>
-              <h3>ML Parity Scorecard</h3>
+              <div className="chart-header" style={{ marginBottom: 2 }}>
+                <h3>ML Parity Scorecard</h3>
+                <span className={`section-health-pill ${mlTabHealth}`}>{renderTabHealthBadge(mlTabHealth)}</span>
+              </div>
               <p className="section-meta">{formatSectionLoadedAt(scorecardLoadedAt || parityLoadedAt)}</p>
               <div className="scorecard-header-row">
                 <span className={`scorecard-confidence ${scorecard.confidence_label}`}>
@@ -1048,7 +1101,10 @@ export function DiagnosticsPanel() {
           )}
           {gpuStatus && (
             <div className={`parity-detail-card progressive-card ${loadingGpu ? "is-loading" : "is-ready"}`}>
-              <h3>ML GPU Acceleration Status</h3>
+              <div className="chart-header" style={{ marginBottom: 2 }}>
+                <h3>ML GPU Acceleration Status</h3>
+                <span className={`section-health-pill ${gpuTabHealth}`}>{renderTabHealthBadge(gpuTabHealth)}</span>
+              </div>
               <p className="section-meta">{formatSectionLoadedAt(gpuLoadedAt)}</p>
               <div className="metric-grid" style={{ marginTop: 10 }}>
                 <div>
@@ -1115,9 +1171,12 @@ export function DiagnosticsPanel() {
             <div className={`pipeline-health-card progressive-card ${loadingPipeline ? "is-loading" : "is-ready"}`}>
               <div className="chart-header">
                 <h3>Pipeline Health (End-to-End)</h3>
-                <span className={pipelineHealth.all_sources_healthy ? "growth-badge ready" : "growth-badge warming"}>
-                  Sources healthy: {pipelineHealth.healthy_source_count}/{pipelineHealth.expected_source_count}
-                </span>
+                <div className="header-badges">
+                  <span className={pipelineHealth.all_sources_healthy ? "growth-badge ready" : "growth-badge warming"}>
+                    Sources healthy: {pipelineHealth.healthy_source_count}/{pipelineHealth.expected_source_count}
+                  </span>
+                  <span className={`section-health-pill ${pipelineTabHealth}`}>{renderTabHealthBadge(pipelineTabHealth)}</span>
+                </div>
               </div>
               <p className="section-meta">{formatSectionLoadedAt(pipelineLoadedAt)}</p>
               <p className="pipeline-next-action">Next action: {pipelineHealth.next_action}</p>
@@ -1302,9 +1361,12 @@ export function DiagnosticsPanel() {
           <div className={`parity-detail-card progressive-card ${loadingDiscord ? "is-loading" : "is-ready"}`}>
             <div className="chart-header">
               <h3>Discord Notifications</h3>
-              <span className={`pipeline-status-pill ${discordEnabled ? "ok" : "warn"}`}>
-                {discordEnabled ? "Configured" : "Not Configured"}
-              </span>
+              <div className="header-badges">
+                <span className={`pipeline-status-pill ${discordEnabled ? "ok" : "warn"}`}>
+                  {discordEnabled ? "Configured" : "Not Configured"}
+                </span>
+                <span className={`section-health-pill ${discordTabHealth}`}>{renderTabHealthBadge(discordTabHealth)}</span>
+              </div>
             </div>
             <p className="section-meta">{formatSectionLoadedAt(discordLoadedAt)}</p>
             <p>
@@ -1447,7 +1509,10 @@ export function DiagnosticsPanel() {
           <div className={`parity-detail-card progressive-card ${loadingFeedHealth ? "is-loading" : "is-ready"}`}>
             <div className="chart-header">
               <h3>External Feed Health</h3>
-              <span className="pipeline-status-pill ok">Real-time Monitoring</span>
+              <div className="header-badges">
+                <span className="pipeline-status-pill ok">Real-time Monitoring</span>
+                <span className={`section-health-pill ${feedHealthTabHealth}`}>{renderTabHealthBadge(feedHealthTabHealth)}</span>
+              </div>
             </div>
             <p className="section-meta">{formatSectionLoadedAt(feedHealthLoadedAt)}</p>
             <p>

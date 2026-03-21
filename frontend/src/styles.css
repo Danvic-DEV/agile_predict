@@ -93,6 +93,9 @@ body {
   font-size: 0.9rem;
   transition: all 0.2s ease;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .tab-button:hover {
@@ -103,6 +106,40 @@ body {
 .tab-button.active {
   color: #f2b84b;
   border-bottom-color: #f2b84b;
+}
+
+.tab-health-chip {
+  display: inline-block;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  border-radius: 999px;
+  padding: 2px 7px;
+  border: 1px solid rgba(201, 214, 220, 0.35);
+  color: #cbd8df;
+  background: rgba(22, 32, 44, 0.45);
+}
+
+.tab-health-chip.ok {
+  color: #b9f0c5;
+  border-color: rgba(185, 240, 197, 0.45);
+  background: rgba(20, 90, 45, 0.35);
+}
+
+.tab-health-chip.warn {
+  color: #f2d597;
+  border-color: rgba(242, 213, 151, 0.45);
+  background: rgba(95, 70, 20, 0.35);
+}
+
+.tab-health-chip.bad {
+  color: #ffb0b0;
+  border-color: rgba(255, 176, 176, 0.45);
+  background: rgba(120, 30, 30, 0.35);
+}
+
+.tab-health-chip.loading {
+  color: #c8d4db;
 }
 
 .loading-chip-row {
@@ -131,6 +168,43 @@ body {
   margin: -4px 0 8px;
   font-size: 0.78rem;
   color: #9eb2be;
+}
+
+.header-badges {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.section-health-pill {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  border: 1px solid rgba(201, 214, 220, 0.35);
+  color: #c8d4db;
+  background: rgba(30, 45, 60, 0.35);
+}
+
+.section-health-pill.ok {
+  color: #b9f0c5;
+  border-color: rgba(185, 240, 197, 0.45);
+  background: rgba(20, 90, 45, 0.35);
+}
+
+.section-health-pill.warn {
+  color: #f2d597;
+  border-color: rgba(242, 213, 151, 0.45);
+  background: rgba(95, 70, 20, 0.35);
+}
+
+.section-health-pill.bad {
+  color: #ffb0b0;
+  border-color: rgba(255, 176, 176, 0.45);
+  background: rgba(120, 30, 30, 0.35);
 }
 
 .progressive-card {
