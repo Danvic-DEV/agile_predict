@@ -9,6 +9,7 @@ export interface AgilePricePoint {
   agile_pred: number;
   agile_low?: number | null;
   agile_high?: number | null;
+  agile_actual?: number | null;
   region?: string | null;
 }
 

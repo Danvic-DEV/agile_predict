@@ -14,6 +14,7 @@ class AgilePricePoint(BaseModel):
     agile_pred: float
     agile_low: float | None = None
     agile_high: float | None = None
+    agile_actual: float | None = None
     region: str | None = None
 
 

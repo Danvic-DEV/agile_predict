@@ -644,6 +644,34 @@ body {
   font-size: 0.9rem;
 }
 
+.day-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.day-tab-button {
+  border: 1px solid rgba(201, 214, 220, 0.3);
+  background: rgba(10, 20, 30, 0.55);
+  color: #c9d6dc;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.day-tab-button:hover {
+  border-color: rgba(242, 184, 75, 0.5);
+  color: #f4f1e8;
+}
+
+.day-tab-button.active {
+  border-color: rgba(242, 184, 75, 0.65);
+  color: #f2b84b;
+  background: rgba(242, 184, 75, 0.14);
+}
+
 .slot-table th,
 .slot-table td {
   padding: 8px 6px;
@@ -658,6 +686,44 @@ body {
 
 .slot-table tbody tr:last-child td {
   border-bottom: 0;
+}
+
+.slot-actual {
+  font-weight: 700;
+}
+
+.slot-actual-in {
+  color: #b9f0c5;
+}
+
+.slot-actual-out {
+  color: #ff9f9f;
+}
+
+.slot-actual-na {
+  color: #9eb2be;
+  font-weight: 500;
+}
+
+.slot-delta {
+  font-weight: 700;
+}
+
+.slot-delta-positive {
+  color: #ffb0b0;
+}
+
+.slot-delta-negative {
+  color: #9dd7ff;
+}
+
+.slot-delta-zero {
+  color: #d5e2ea;
+}
+
+.slot-delta-na {
+  color: #9eb2be;
+  font-weight: 500;
 }
 
 .training-mode-banner {

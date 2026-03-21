@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from src.repositories.sql_models import AgileDataORM, ForecastORM
+from src.repositories.sql_models import AgileActualORM, AgileDataORM, ForecastORM
 from src.schemas.forecast import AgilePricePoint, ForecastSummary, ForecastWithPrices
 
 
@@ -44,6 +44,17 @@ class ForecastRepository:
             price_stmt = price_stmt.where(AgileDataORM.region == region.upper())
         prices = self.session.execute(price_stmt).scalars().all()
 
+        actual_by_key: dict[tuple[datetime, str], float] = {}
+        if prices:
+            price_dates = {row.date_time for row in prices}
+            price_regions = {row.region for row in prices}
+            actual_stmt = select(AgileActualORM).where(
+                AgileActualORM.date_time.in_(price_dates),
+                AgileActualORM.region.in_(price_regions),
+            )
+            actual_rows = self.session.execute(actual_stmt).scalars().all()
+            actual_by_key = {(row.date_time, row.region): row.agile_actual for row in actual_rows}
+
         grouped: dict[int, list[AgileDataORM]] = defaultdict(list)
         for row in prices:
             grouped[row.forecast_id].append(row)
@@ -52,8 +63,10 @@ class ForecastRepository:
         for forecast in forecasts:
             forecast_prices = sorted(grouped.get(forecast.id, []), key=lambda p: p.date_time)
             if forecast_prices:
-                max_date = forecast_prices[0].date_time + timedelta(days=days)
-                forecast_prices = [p for p in forecast_prices if p.date_time <= max_date]
+                now_utc = datetime.now(timezone.utc)
+                horizon_end = now_utc + timedelta(days=days)
+                # Only expose operational slots for the forward horizon.
+                forecast_prices = [p for p in forecast_prices if now_utc <= p.date_time <= horizon_end]
 
             forecast_name = forecast.name
             if region is not None:
@@ -65,10 +78,13 @@ class ForecastRepository:
                     agile_pred=price.agile_pred,
                     agile_low=price.agile_low if include_high_low else None,
                     agile_high=price.agile_high if include_high_low else None,
+                    agile_actual=actual_by_key.get((price.date_time, price.region)),
                     region=price.region if region is None else None,
                 )
                 for price in forecast_prices
             ]
+            if not points:
+                continue
             results.append(
                 ForecastWithPrices(id=forecast.id, name=forecast_name, created_at=forecast.created_at, prices=points)
             )

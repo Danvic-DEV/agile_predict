@@ -146,6 +146,56 @@ function formatSlotLabel(dateTime: string): string {
   }).format(new Date(dateTime));
 }
 
+function getLondonDayKey(dateTime: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: "Europe/London",
+  }).format(new Date(dateTime));
+}
+
+function formatLondonDayLabel(dateTime: string): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+    timeZone: "Europe/London",
+  }).format(new Date(dateTime));
+}
+
+function getActualCellClass(slot: AgilePricePoint): string {
+  if (slot.agile_actual == null || slot.agile_low == null || slot.agile_high == null) {
+    return "slot-actual-na";
+  }
+  if (slot.agile_actual >= slot.agile_low && slot.agile_actual <= slot.agile_high) {
+    return "slot-actual-in";
+  }
+  return "slot-actual-out";
+}
+
+function getDeltaClass(slot: AgilePricePoint): string {
+  if (slot.agile_actual == null) {
+    return "slot-delta-na";
+  }
+  const delta = slot.agile_actual - slot.agile_pred;
+  if (delta > 0) {
+    return "slot-delta-positive";
+  }
+  if (delta < 0) {
+    return "slot-delta-negative";
+  }
+  return "slot-delta-zero";
+}
+
+function formatDelta(slot: AgilePricePoint): string {
+  if (slot.agile_actual == null) {
+    return "n/a";
+  }
+  const delta = slot.agile_actual - slot.agile_pred;
+  return `${delta >= 0 ? "+" : ""}${delta.toFixed(2)}`;
+}
+
 export function ForecastDashboard() {
   const [forecasts, setForecasts] = useState<ForecastSummary[]>([]);
   const [prices, setPrices] = useState<ForecastWithPrices[]>([]);
@@ -157,6 +207,7 @@ export function ForecastDashboard() {
   const [error, setError] = useState<string>("");
   const [customerForecastStatus, setCustomerForecastStatus] = useState<CustomerForecastStatus>("available");
   const [refreshToken, setRefreshToken] = useState(0);
+  const [selectedDayKey, setSelectedDayKey] = useState<string>("");
 
   useEffect(() => {
     let active = true;
@@ -218,9 +269,48 @@ export function ForecastDashboard() {
       firstSlot: latest.prices[0],
       lastSlot: latest.prices[latest.prices.length - 1],
       chart: buildChartModel(latest.prices),
-      recentSlots: latest.prices.slice(0, 10),
     };
   }, [latest]);
+
+  const dayGroups = useMemo(() => {
+    if (!latest) {
+      return [] as Array<{ key: string; label: string; slots: AgilePricePoint[] }>;
+    }
+
+    const nowMs = Date.now();
+    const futureSlots = latest.prices.filter((slot) => new Date(slot.date_time).getTime() >= nowMs);
+    const groups = new Map<string, { key: string; label: string; slots: AgilePricePoint[] }>();
+
+    futureSlots.forEach((slot) => {
+      const key = getLondonDayKey(slot.date_time);
+      if (!groups.has(key)) {
+        groups.set(key, {
+          key,
+          label: formatLondonDayLabel(slot.date_time),
+          slots: [],
+        });
+      }
+      groups.get(key)?.slots.push(slot);
+    });
+
+    return Array.from(groups.values());
+  }, [latest]);
+
+  useEffect(() => {
+    if (dayGroups.length === 0) {
+      setSelectedDayKey("");
+      return;
+    }
+    const exists = dayGroups.some((group) => group.key === selectedDayKey);
+    if (!exists) {
+      setSelectedDayKey(dayGroups[0].key);
+    }
+  }, [dayGroups, selectedDayKey]);
+
+  const selectedDayGroup = useMemo(
+    () => dayGroups.find((group) => group.key === selectedDayKey) ?? dayGroups[0] ?? null,
+    [dayGroups, selectedDayKey],
+  );
 
   return (
     <section className="card">
@@ -389,28 +479,54 @@ export function ForecastDashboard() {
               <div className="table-card">
                 <div className="chart-header">
                   <h3>Upcoming Slots</h3>
-                  <span>First 10 rows</span>
+                  <span>{selectedDayGroup ? `${selectedDayGroup.slots.length} slots` : "0 slots"}</span>
                 </div>
-                <table className="slot-table">
-                  <thead>
-                    <tr>
-                      <th>Slot</th>
-                      <th>Pred</th>
-                      <th>Low</th>
-                      <th>High</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {latestSummary.recentSlots.map((slot) => (
-                      <tr key={slot.date_time}>
-                        <td>{formatSlotLabel(slot.date_time)}</td>
-                        <td>{slot.agile_pred.toFixed(2)}</td>
-                        <td>{slot.agile_low?.toFixed(2) ?? "n/a"}</td>
-                        <td>{slot.agile_high?.toFixed(2) ?? "n/a"}</td>
-                      </tr>
+                {dayGroups.length > 0 && (
+                  <div className="day-tabs" role="tablist" aria-label="Upcoming slots by day">
+                    {dayGroups.map((group) => (
+                      <button
+                        key={group.key}
+                        type="button"
+                        role="tab"
+                        className={`day-tab-button ${selectedDayGroup?.key === group.key ? "active" : ""}`}
+                        aria-selected={selectedDayGroup?.key === group.key}
+                        onClick={() => setSelectedDayKey(group.key)}
+                      >
+                        {group.label}
+                      </button>
                     ))}
-                  </tbody>
-                </table>
+                  </div>
+                )}
+                {selectedDayGroup ? (
+                  <table className="slot-table">
+                    <thead>
+                      <tr>
+                        <th>Slot</th>
+                        <th>Pred</th>
+                        <th>Low</th>
+                        <th>High</th>
+                        <th>Actual</th>
+                        <th>Delta</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedDayGroup.slots.map((slot) => (
+                        <tr key={slot.date_time}>
+                          <td>{formatSlotLabel(slot.date_time)}</td>
+                          <td>{slot.agile_pred.toFixed(2)}</td>
+                          <td>{slot.agile_low?.toFixed(2) ?? "n/a"}</td>
+                          <td>{slot.agile_high?.toFixed(2) ?? "n/a"}</td>
+                          <td className={`slot-actual ${getActualCellClass(slot)}`}>
+                            {slot.agile_actual?.toFixed(2) ?? "n/a"}
+                          </td>
+                          <td className={`slot-delta ${getDeltaClass(slot)}`}>{formatDelta(slot)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <p>No future slots available for this forecast horizon.</p>
+                )}
               </div>
             </>
           )}
