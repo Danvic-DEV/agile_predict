@@ -79,6 +79,7 @@ class BootstrapBundleConfig:
     day_ahead_values: tuple[float, ...] | None = None
     day_ahead_low_values: tuple[float, ...] | None = None
     day_ahead_high_values: tuple[float, ...] | None = None
+    feature_rows: tuple["HistoryForecastFeatureRow", ...] | None = None
     forecast_mean: float | None = None
     forecast_stdev: float | None = None
 
@@ -169,12 +170,16 @@ def write_bootstrap_bundle(uow: BootstrapBundleUoW, config: BootstrapBundleConfi
     day_ahead_values = tuple(float(v) for v in config.day_ahead_values) if config.day_ahead_values else None
     day_ahead_low_values = tuple(float(v) for v in config.day_ahead_low_values) if config.day_ahead_low_values else None
     day_ahead_high_values = tuple(float(v) for v in config.day_ahead_high_values) if config.day_ahead_high_values else None
+    feature_rows = tuple(config.feature_rows) if config.feature_rows else None
     points = len(day_ahead_values) if day_ahead_values is not None else config.points
+    if feature_rows is not None and len(feature_rows) < points:
+        raise ValueError(f"insufficient feature rows for forecast points: have={len(feature_rows)} need={points}")
 
     forecast_data_rows: list[ForecastDataWrite] = []
     agile_rows: list[AgileDataWrite] = []
     for i in range(points):
-        dt = anchor_time + timedelta(minutes=30 * i)
+        feature_row = feature_rows[i] if feature_rows is not None else None
+        dt = feature_row.date_time if feature_row is not None else anchor_time + timedelta(minutes=30 * i)
         day_ahead = day_ahead_values[i] if day_ahead_values is not None else config.day_ahead_base + config.day_ahead_step * (i % 16)
         day_ahead_low = day_ahead_low_values[i] if day_ahead_low_values is not None else None
         day_ahead_high = day_ahead_high_values[i] if day_ahead_high_values is not None else None
@@ -184,13 +189,13 @@ def write_bootstrap_bundle(uow: BootstrapBundleUoW, config: BootstrapBundleConfi
                 forecast_id=forecast.id,
                 date_time=dt,
                 day_ahead=round(day_ahead, 4),
-                bm_wind=config.bm_wind_base + (i % 10) * 40,
-                solar=config.solar_base + (i % 8) * 25,
-                emb_wind=config.emb_wind_base + (i % 6) * 18,
-                temp_2m=config.temp_2m_base + (i % 12) * 0.2,
-                wind_10m=config.wind_10m_base + (i % 9) * 0.15,
-                rad=config.rad_base + (i % 10) * 3,
-                demand=config.demand_base + (i % 12) * 55,
+                bm_wind=(feature_row.bm_wind if feature_row is not None else config.bm_wind_base + (i % 10) * 40),
+                solar=(feature_row.solar if feature_row is not None else config.solar_base + (i % 8) * 25),
+                emb_wind=(feature_row.emb_wind if feature_row is not None else config.emb_wind_base + (i % 6) * 18),
+                temp_2m=(feature_row.temp_2m if feature_row is not None else config.temp_2m_base + (i % 12) * 0.2),
+                wind_10m=(feature_row.wind_10m if feature_row is not None else config.wind_10m_base + (i % 9) * 0.15),
+                rad=(feature_row.rad if feature_row is not None else config.rad_base + (i % 10) * 3),
+                demand=(feature_row.demand if feature_row is not None else config.demand_base + (i % 12) * 55),
             )
         )
 

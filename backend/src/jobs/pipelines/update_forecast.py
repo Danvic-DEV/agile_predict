@@ -1,4 +1,5 @@
 import logging
+import math
 from datetime import datetime, timedelta, timezone
 
 import pandas as pd
@@ -32,6 +33,11 @@ from src.ml.parity.day_ahead_xgb import check_ml_training_readiness, run_ml_day_
 from src.repositories.unit_of_work import UnitOfWork
 
 log = logging.getLogger(__name__)
+
+
+def _align_to_half_hour(dt: datetime) -> datetime:
+    aligned = dt.astimezone(timezone.utc).replace(second=0, microsecond=0)
+    return aligned.replace(minute=0 if aligned.minute < 30 else 30)
 
 
 def _diff_metrics(reference: tuple[float, ...], candidate: tuple[float, ...]) -> tuple[float, float, float] | None:
@@ -160,16 +166,44 @@ def run_update_forecast_job(uow: UnitOfWork) -> ForecastRunResult:
         day_ahead_high_values = None
         source = pipeline.source
 
+    forecast_points = len(day_ahead_values)
+    forecast_horizon_days = max(1, math.ceil(forecast_points / 48) + 1)
+    forecast_anchor = _align_to_half_hour(datetime.now(timezone.utc))
+    forward_features_df = fetch_grid_weather_features(lookback_days=5, forecast_days=forecast_horizon_days)
+    forward_features_df = forward_features_df.sort_index()
+    forward_features_df.index = pd.to_datetime(forward_features_df.index, utc=True)
+    forward_features_df = forward_features_df[forward_features_df.index >= pd.Timestamp(forecast_anchor)]
+
+    feature_rows = [
+        HistoryForecastFeatureRow(
+            date_time=ts.to_pydatetime(),
+            bm_wind=float(row["bm_wind"]),
+            solar=float(row["solar"]),
+            emb_wind=float(row["emb_wind"]),
+            demand=float(row["demand"]),
+            temp_2m=float(row["temp_2m"]),
+            wind_10m=float(row["wind_10m"]),
+            rad=float(row["rad"]),
+            day_ahead=None,
+        )
+        for ts, row in forward_features_df.iloc[:forecast_points].iterrows()
+    ]
+    if len(feature_rows) < forecast_points:
+        raise RuntimeError(
+            f"insufficient forward feature rows for forecast horizon: have={len(feature_rows)} need={forecast_points}"
+        )
+
     result = write_bootstrap_bundle(
         uow=uow,
         config=BootstrapBundleConfig(
-            points=len(day_ahead_values),
+            points=forecast_points,
             idempotency_key="update-job-seed",
             replace_existing=True,
             regions=tuple(settings.bootstrap_regions_list),
             day_ahead_values=day_ahead_values,
             day_ahead_low_values=day_ahead_low_values,
             day_ahead_high_values=day_ahead_high_values,
+            feature_rows=tuple(feature_rows),
             forecast_mean=ml_cv_mean_rmse,
             forecast_stdev=ml_cv_stdev_rmse,
             write_agile_data=True,

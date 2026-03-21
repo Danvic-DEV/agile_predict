@@ -349,10 +349,12 @@ def _fetch_open_meteo(start_date: str, end_date: str) -> pd.DataFrame:
 
 def fetch_grid_weather_features(
     lookback_days: int = 62,
+    forecast_days: int = 0,
     now: datetime | None = None,
 ) -> pd.DataFrame:
     """
-    Fetch real grid + weather features for the past `lookback_days`.
+    Fetch real grid + weather features for the past `lookback_days` and the
+    next `forecast_days`.
 
     Returns a DataFrame with UTC DatetimeIndex (30min), columns:
         bm_wind, solar, emb_wind, demand, temp_2m, wind_10m, rad
@@ -370,7 +372,7 @@ def fetch_grid_weather_features(
         ref_ts = ref_ts.tz_convert("UTC")
     start_ts = ref_ts - pd.Timedelta(days=lookback_days)
     start_date = start_ts.strftime("%Y-%m-%d")
-    end_date = ref_ts.normalize().strftime("%Y-%m-%d")
+    end_date = (ref_ts.normalize() + pd.Timedelta(days=max(0, forecast_days))).strftime("%Y-%m-%d")
 
     log.info("Fetching grid+weather features from %s to %s", start_date, end_date)
 
