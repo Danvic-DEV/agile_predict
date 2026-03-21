@@ -264,9 +264,12 @@ def run_update_forecast_job(uow: UnitOfWork) -> ForecastRunResult:
     try:
         now_utc = datetime.now(timezone.utc)
         from_date = now_utc - timedelta(days=30)
+        # Agile prices are released ~4pm daily covering up to 10:30pm the next
+        # day, so we must extend to_date to capture those forward-released prices.
+        to_date = now_utc + timedelta(days=2)
         agile_prices_by_region = fetch_agile_prices_all_regions(
             from_date=from_date,
-            to_date=now_utc,
+            to_date=to_date,
             timeout=20,
         )
 
