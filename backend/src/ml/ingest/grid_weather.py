@@ -19,6 +19,7 @@ from urllib.parse import urlencode
 from urllib.request import urlopen, Request
 
 import pandas as pd
+from src.core.feed_health import record_feed_error, record_feed_success
 
 log = logging.getLogger(__name__)
 
@@ -73,8 +74,11 @@ def _fetch_neso_demand(start_date: str) -> pd.Series:
         df.index = pd.to_datetime(df["startTime"], utc=True)
         df = df[["demand"]].sort_index().astype(float)
         df = df.resample("30min").mean().interpolate()
+        record_feed_success("elexon_indo", records_received=len(df))
+        record_feed_success("neso_demand", records_received=len(df))
         return df["demand"]
     except Exception as exc:  # noqa: BLE001
+        record_feed_error("elexon_indo", str(exc))
         log.warning("Elexon INDO failed, trying NESO: %s", exc)
 
     # Fallback: NESO settlement-period demand datasets
@@ -91,10 +95,12 @@ def _fetch_neso_demand(start_date: str) -> pd.Series:
             ) * pd.Timedelta("30min")
             series = df["ND"].astype(float).sort_index()
             series = series.resample("30min").mean().interpolate()
+                record_feed_success("neso_demand", records_received=len(series))
             return series
         except Exception as exc2:  # noqa: BLE001
             log.warning("NESO demand resource %s failed: %s", rid, exc2)
 
+            record_feed_error("neso_demand", "all NESO/Elexon demand sources failed")
     return pd.Series(dtype=float)
 
 
@@ -109,8 +115,10 @@ def _fetch_neso_bm_wind(start_date: str) -> pd.Series:
         df.index = pd.to_datetime(df["Datetime_GMT"], utc=True)
         series = df["Incentive_forecast"].astype(float).sort_index()
         series = series.resample("30min").mean().interpolate()
+        record_feed_success("neso_bm_wind", records_received=len(series))
         return series
     except Exception as exc:  # noqa: BLE001
+        record_feed_error("neso_bm_wind", str(exc))
         log.warning("NESO BM wind failed: %s", exc)
         return pd.Series(dtype=float)
 
@@ -126,8 +134,10 @@ def _fetch_neso_solar_wind(start_date: str) -> pd.DataFrame:
         df.index = pd.to_datetime(df["DATETIME"], utc=True)
         out = df[["SOLAR", "WIND"]].rename(columns={"SOLAR": "solar", "WIND": "total_wind"}).astype(float).sort_index()
         out = out.resample("30min").mean().interpolate()
+        record_feed_success("neso_solar_wind", records_received=len(out))
         return out
     except Exception as exc:  # noqa: BLE001
+        record_feed_error("neso_solar_wind", str(exc))
         log.warning("NESO solar/wind failed: %s", exc)
         return pd.DataFrame(columns=["solar", "total_wind"])
 
@@ -148,8 +158,10 @@ def _fetch_neso_embedded(start_date: str) -> pd.DataFrame:
             columns={"EMBEDDED_SOLAR_FORECAST": "solar", "EMBEDDED_WIND_FORECAST": "emb_wind"}
         ).astype(float).sort_index()
         df = df.resample("30min").mean().interpolate()
+        record_feed_success("neso_embedded_solar_wind", records_received=len(df))
         return df
     except Exception as exc:  # noqa: BLE001
+        record_feed_error("neso_embedded_solar_wind", str(exc))
         log.warning("NESO embedded solar/wind failed: %s", exc)
         return pd.DataFrame(columns=["solar", "emb_wind"])
 
@@ -205,6 +217,7 @@ def _fetch_open_meteo(start_date: str, end_date: str) -> pd.DataFrame:
         log.warning("Open-Meteo forecast failed: %s", exc)
 
     if not frames:
+        record_feed_error("weather_open_meteo", "archive and forecast weather sources failed")
         return pd.DataFrame(columns=["temp_2m", "wind_10m", "rad"])
 
     merged = pd.concat(frames, axis=1).sort_index()
@@ -219,7 +232,9 @@ def _fetch_open_meteo(start_date: str, end_date: str) -> pd.DataFrame:
         if fc in merged.columns:
             merged = merged.drop(columns=[fc])
 
-    return merged[["temp_2m", "wind_10m", "rad"]].sort_index()
+    output = merged[["temp_2m", "wind_10m", "rad"]].sort_index()
+    record_feed_success("weather_open_meteo", records_received=len(output))
+    return output
 
 
 # ---------------------------------------------------------------------------

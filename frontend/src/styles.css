@@ -729,6 +729,11 @@ body {
   background: rgba(120, 30, 30, 0.1);
 }
 
+.feed-item.feed-neutral {
+  border-color: rgba(201, 214, 220, 0.2);
+  background: rgba(20, 30, 40, 0.35);
+}
+
 .feed-name {
   font-weight: 600;
   color: #f4f1e8;
@@ -769,6 +774,12 @@ body {
   color: #ffb0b0;
   border: 1px solid rgba(255, 176, 176, 0.45);
   background: rgba(120, 30, 30, 0.35);
+}
+
+.feed-status-neutral {
+  color: #c8d4db;
+  border: 1px solid rgba(201, 214, 220, 0.35);
+  background: rgba(30, 45, 60, 0.35);
 }
 
 .feed-timestamp,

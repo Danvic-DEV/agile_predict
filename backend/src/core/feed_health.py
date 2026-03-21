@@ -178,6 +178,9 @@ def get_feed_health() -> Dict[str, dict]:
                 status = "stale"
             else:
                 status = "healthy"
+        elif source_id.startswith("agile_octopus_") or source_id == "elexon_ndf":
+            # These feeds are currently not polled by the migrated runtime path.
+            status = "inactive"
         
         result[source_id] = {
             "name": entry.name,

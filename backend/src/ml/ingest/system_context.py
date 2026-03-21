@@ -17,6 +17,7 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 import pandas as pd
+from src.core.feed_health import record_feed_error, record_feed_success
 
 log = logging.getLogger(__name__)
 
@@ -145,8 +146,10 @@ def fetch_fuelinst_context(start_dt: datetime, end_dt: datetime) -> pd.DataFrame
         out["interconnector_net_mw"] = pivot[int_cols].sum(axis=1) if int_cols else 0.0
 
         out = out.resample("30min").mean().interpolate()
+        record_feed_success("elexon_fuelinst", records_received=len(out))
         return out
     except Exception as exc:  # noqa: BLE001
+        record_feed_error("elexon_fuelinst", str(exc))
         log.warning("Elexon FUELINST context fetch failed: %s", exc)
         return pd.DataFrame(
             columns=["gas_mw", "wind_mw", "nuclear_mw", "pumped_storage_mw", "interconnector_net_mw"]

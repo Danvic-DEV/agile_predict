@@ -103,6 +103,19 @@ function formatIsoDate(value: string | null): string {
   }).format(new Date(ts));
 }
 
+function feedStatusClass(status: string): "ok" | "warn" | "error" | "neutral" {
+  if (status === "healthy") return "ok";
+  if (status === "stale") return "warn";
+  if (status === "error") return "error";
+  return "neutral";
+}
+
+function feedStatusLabel(status: string): string {
+  if (status === "inactive") return "INACTIVE";
+  if (status === "unknown") return "NOT OBSERVED";
+  return status.toUpperCase();
+}
+
 function minutesSince(value: string | null, nowMs: number): number | null {
   if (!value) {
     return null;
@@ -1295,12 +1308,12 @@ export function DiagnosticsPanel() {
                     .filter(([id]) => id.startsWith("agile_"))
                     .map(([id, data]) => {
                       const entry = data as any;
-                      const statusClass = entry.status === "healthy" ? "ok" : entry.status === "stale" ? "warn" : "error";
+                      const statusClass = feedStatusClass(entry.status);
                       return (
                         <div key={id} className={`feed-item feed-${statusClass}`}>
                           <div className="feed-name">{entry.name}</div>
                           <div className="feed-details">
-                            <span className={`feed-status feed-status-${statusClass}`}>{entry.status.toUpperCase()}</span>
+                            <span className={`feed-status feed-status-${statusClass}`}>{feedStatusLabel(entry.status)}</span>
                             {entry.last_successful_pull && (
                               <span className="feed-timestamp">Last: {formatUpdateRelativeTime(entry.last_successful_pull, nowMs)}</span>
                             )}
@@ -1327,12 +1340,12 @@ export function DiagnosticsPanel() {
                     .filter(([id]) => id.startsWith("nordpool_"))
                     .map(([id, data]) => {
                       const entry = data as any;
-                      const statusClass = entry.status === "healthy" ? "ok" : entry.status === "stale" ? "warn" : "error";
+                      const statusClass = feedStatusClass(entry.status);
                       return (
                         <div key={id} className={`feed-item feed-${statusClass}`}>
                           <div className="feed-name">{entry.name}</div>
                           <div className="feed-details">
-                            <span className={`feed-status feed-status-${statusClass}`}>{entry.status.toUpperCase()}</span>
+                            <span className={`feed-status feed-status-${statusClass}`}>{feedStatusLabel(entry.status)}</span>
                             {entry.last_successful_pull && (
                               <span className="feed-timestamp">Last: {formatUpdateRelativeTime(entry.last_successful_pull, nowMs)}</span>
                             )}
@@ -1359,12 +1372,12 @@ export function DiagnosticsPanel() {
                     .filter(([id]) => id.startsWith("weather_"))
                     .map(([id, data]) => {
                       const entry = data as any;
-                      const statusClass = entry.status === "healthy" ? "ok" : entry.status === "stale" ? "warn" : "error";
+                      const statusClass = feedStatusClass(entry.status);
                       return (
                         <div key={id} className={`feed-item feed-${statusClass}`}>
                           <div className="feed-name">{entry.name}</div>
                           <div className="feed-details">
-                            <span className={`feed-status feed-status-${statusClass}`}>{entry.status.toUpperCase()}</span>
+                            <span className={`feed-status feed-status-${statusClass}`}>{feedStatusLabel(entry.status)}</span>
                             {entry.last_successful_pull && (
                               <span className="feed-timestamp">Last: {formatUpdateRelativeTime(entry.last_successful_pull, nowMs)}</span>
                             )}
@@ -1391,12 +1404,12 @@ export function DiagnosticsPanel() {
                     .filter(([id]) => id.startsWith("neso_"))
                     .map(([id, data]) => {
                       const entry = data as any;
-                      const statusClass = entry.status === "healthy" ? "ok" : entry.status === "stale" ? "warn" : "error";
+                      const statusClass = feedStatusClass(entry.status);
                       return (
                         <div key={id} className={`feed-item feed-${statusClass}`}>
                           <div className="feed-name">{entry.name}</div>
                           <div className="feed-details">
-                            <span className={`feed-status feed-status-${statusClass}`}>{entry.status.toUpperCase()}</span>
+                            <span className={`feed-status feed-status-${statusClass}`}>{feedStatusLabel(entry.status)}</span>
                             {entry.last_successful_pull && (
                               <span className="feed-timestamp">Last: {formatUpdateRelativeTime(entry.last_successful_pull, nowMs)}</span>
                             )}
@@ -1423,12 +1436,12 @@ export function DiagnosticsPanel() {
                     .filter(([id]) => id.startsWith("elexon_"))
                     .map(([id, data]) => {
                       const entry = data as any;
-                      const statusClass = entry.status === "healthy" ? "ok" : entry.status === "stale" ? "warn" : "error";
+                      const statusClass = feedStatusClass(entry.status);
                       return (
                         <div key={id} className={`feed-item feed-${statusClass}`}>
                           <div className="feed-name">{entry.name}</div>
                           <div className="feed-details">
-                            <span className={`feed-status feed-status-${statusClass}`}>{entry.status.toUpperCase()}</span>
+                            <span className={`feed-status feed-status-${statusClass}`}>{feedStatusLabel(entry.status)}</span>
                             {entry.last_successful_pull && (
                               <span className="feed-timestamp">Last: {formatUpdateRelativeTime(entry.last_successful_pull, nowMs)}</span>
                             )}
