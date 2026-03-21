@@ -431,7 +431,19 @@ def fetch_grid_weather_features(
                 coverage_ends.append(non_na.index.max())
     if coverage_ends:
         strict_end = min(coverage_ends)
-        combined = combined.loc[:strict_end]
+        # Guard against pathological source skew where one column's latest
+        # timestamp trails far behind "now" and would erase all forward rows.
+        # In that case, keep the full frame and let downstream horizon logic
+        # truncate/report insufficiency explicitly.
+        if strict_end >= (ref_ts - pd.Timedelta(hours=1)):
+            combined = combined.loc[:strict_end]
+        else:
+            log.warning(
+                "Shared feature coverage ends before reference time; skipping strict truncation "
+                "(strict_end=%s ref_ts=%s)",
+                strict_end,
+                ref_ts,
+            )
 
     # Drop rows where more than half the required columns are still NaN
     combined = combined.dropna(thresh=len(required) // 2 + 1)
