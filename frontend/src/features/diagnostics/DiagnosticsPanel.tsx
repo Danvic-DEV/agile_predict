@@ -227,6 +227,14 @@ export function DiagnosticsPanel() {
   const [loadingGpu, setLoadingGpu] = useState(true);
   const [loadingFeedHealth, setLoadingFeedHealth] = useState(true);
   const [loadingDiscord, setLoadingDiscord] = useState(true);
+  const [diagnosticsLoadedAt, setDiagnosticsLoadedAt] = useState<string | null>(null);
+  const [parityLoadedAt, setParityLoadedAt] = useState<string | null>(null);
+  const [scorecardLoadedAt, setScorecardLoadedAt] = useState<string | null>(null);
+  const [parityHistoryLoadedAt, setParityHistoryLoadedAt] = useState<string | null>(null);
+  const [pipelineLoadedAt, setPipelineLoadedAt] = useState<string | null>(null);
+  const [gpuLoadedAt, setGpuLoadedAt] = useState<string | null>(null);
+  const [feedHealthLoadedAt, setFeedHealthLoadedAt] = useState<string | null>(null);
+  const [discordLoadedAt, setDiscordLoadedAt] = useState<string | null>(null);
 
   const parityStatus = parity?.report_available
     ? parity.all_passed
@@ -243,12 +251,20 @@ export function DiagnosticsPanel() {
     return new Date(sinceMs).toISOString();
   }
 
+  function formatSectionLoadedAt(value: string | null): string {
+    if (!value) {
+      return "Not loaded yet";
+    }
+    return `Updated ${formatUpdateRelativeTime(value, nowMs)}`;
+  }
+
   async function refreshDiagnostics() {
     setLoadingDiagnostics(true);
     try {
       const result = await fetchLatestDiagnostics();
       setData(result);
       setError("");
+      setDiagnosticsLoadedAt(new Date().toISOString());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed loading diagnostics");
     } finally {
@@ -262,6 +278,7 @@ export function DiagnosticsPanel() {
       const result = await fetchLatestParitySummary();
       setParity(result);
       setParityError("");
+      setParityLoadedAt(new Date().toISOString());
     } catch (err) {
       setParityError(err instanceof Error ? err.message : "Failed loading parity summary");
     } finally {
@@ -275,6 +292,7 @@ export function DiagnosticsPanel() {
       const scorecardResult = await fetchMlParityScorecard(30);
       setScorecard(scorecardResult);
       setParityError("");
+      setScorecardLoadedAt(new Date().toISOString());
     } catch (err) {
       setParityError(err instanceof Error ? err.message : "Failed loading parity scorecard");
     } finally {
@@ -294,6 +312,7 @@ export function DiagnosticsPanel() {
       setParityHistory(parityHistoryResult.items);
       setHistoryTotal(parityHistoryResult.total);
       setParityError("");
+      setParityHistoryLoadedAt(new Date().toISOString());
     } catch (err) {
       setParityError(err instanceof Error ? err.message : "Failed loading parity history");
     } finally {
@@ -307,6 +326,7 @@ export function DiagnosticsPanel() {
       const healthResult = await fetchIngestPipelineHealth();
       setPipelineHealth(healthResult);
       setParityError("");
+      setPipelineLoadedAt(new Date().toISOString());
     } catch (err) {
       setParityError(err instanceof Error ? err.message : "Failed loading pipeline health");
     } finally {
@@ -320,6 +340,7 @@ export function DiagnosticsPanel() {
       const gpuResult = await fetchMlGpuStatus();
       setGpuStatus(gpuResult);
       setParityError("");
+      setGpuLoadedAt(new Date().toISOString());
     } catch (err) {
       setParityError(err instanceof Error ? err.message : "Failed loading GPU status");
     } finally {
@@ -333,6 +354,7 @@ export function DiagnosticsPanel() {
       const feedHealthResult = await fetchFeedHealth();
       setFeedHealth(feedHealthResult);
       setParityError("");
+      setFeedHealthLoadedAt(new Date().toISOString());
     } catch (err) {
       setParityError(err instanceof Error ? err.message : "Failed loading feed health");
     } finally {
@@ -349,6 +371,7 @@ export function DiagnosticsPanel() {
       setDiscordEnabled(result.enabled);
       setDiscordSaveState("idle");
       setDiscordError("");
+      setDiscordLoadedAt(new Date().toISOString());
     } catch (err) {
       setDiscordError(err instanceof Error ? err.message : "Failed loading Discord configuration");
     } finally {
@@ -672,13 +695,14 @@ export function DiagnosticsPanel() {
       {activeTab === "status" && (
         <>
           {(data || scorecard || loadingDiagnostics || loadingScorecard) && (
-            <div className="growth-visibility-card">
+            <div className={`growth-visibility-card progressive-card ${loadingDiagnostics || loadingScorecard ? "is-loading" : "is-ready"}`}>
               <div className="chart-header">
                 <h3>Data Growth and Readiness</h3>
                 <span className={readinessComplete ? "growth-badge ready" : "growth-badge warming"}>
                   {readinessComplete ? "READY" : "WARMING UP"}
                 </span>
               </div>
+              <p className="section-meta">{formatSectionLoadedAt(scorecardLoadedAt || diagnosticsLoadedAt)}</p>
 
               <div className="progress-stack">
                 {readinessRows.map((row) => (
@@ -726,11 +750,18 @@ export function DiagnosticsPanel() {
 
           {(data || loadingDiagnostics) && (
             <>
-              <div className="update-run-card">
+              <div className={`update-run-card progressive-card ${loadingDiagnostics ? "is-loading" : "is-ready"}`}>
                 <h3>Last Update Run</h3>
                 <div className="update-run-topline">
                   {loadingDiagnostics ? "Loading latest run..." : formatUpdateRelativeTime(data?.update_source_updated_at ?? null, nowMs)}
                 </div>
+                {loadingDiagnostics && (
+                  <div className="skeleton-stack">
+                    <div className="skeleton-line long" />
+                    <div className="skeleton-line" />
+                    <div className="skeleton-line short" />
+                  </div>
+                )}
                 <div className="update-run-grid">
                   <span>Source</span>
                   <strong>{data?.update_source ?? "n/a"}</strong>
@@ -795,8 +826,9 @@ export function DiagnosticsPanel() {
             </div>
           )}
           {parity && scorecard && (
-            <div className="parity-detail-card">
+            <div className={`parity-detail-card progressive-card ${loadingParitySummary || loadingScorecard ? "is-loading" : "is-ready"}`}>
               <h3>ML Parity Scorecard</h3>
+              <p className="section-meta">{formatSectionLoadedAt(scorecardLoadedAt || parityLoadedAt)}</p>
               <div className="scorecard-header-row">
                 <span className={`scorecard-confidence ${scorecard.confidence_label}`}>
                   {scorecard.confidence_label.toUpperCase()} confidence
@@ -1008,11 +1040,16 @@ export function DiagnosticsPanel() {
           {loadingGpu && (
             <div className="parity-detail-card">
               <p className="section-loading">Loading GPU status...</p>
+              <div className="skeleton-stack">
+                <div className="skeleton-line" />
+                <div className="skeleton-line long" />
+              </div>
             </div>
           )}
           {gpuStatus && (
-            <div className="parity-detail-card">
+            <div className={`parity-detail-card progressive-card ${loadingGpu ? "is-loading" : "is-ready"}`}>
               <h3>ML GPU Acceleration Status</h3>
+              <p className="section-meta">{formatSectionLoadedAt(gpuLoadedAt)}</p>
               <div className="metric-grid" style={{ marginTop: 10 }}>
                 <div>
                   <span className="label">Tested</span>
@@ -1068,16 +1105,21 @@ export function DiagnosticsPanel() {
           {loadingPipeline && (
             <div className="pipeline-health-card">
               <p className="section-loading">Loading pipeline health...</p>
+              <div className="skeleton-stack">
+                <div className="skeleton-line long" />
+                <div className="skeleton-line" />
+              </div>
             </div>
           )}
           {pipelineHealth && (
-            <div className="pipeline-health-card">
+            <div className={`pipeline-health-card progressive-card ${loadingPipeline ? "is-loading" : "is-ready"}`}>
               <div className="chart-header">
                 <h3>Pipeline Health (End-to-End)</h3>
                 <span className={pipelineHealth.all_sources_healthy ? "growth-badge ready" : "growth-badge warming"}>
                   Sources healthy: {pipelineHealth.healthy_source_count}/{pipelineHealth.expected_source_count}
                 </span>
               </div>
+              <p className="section-meta">{formatSectionLoadedAt(pipelineLoadedAt)}</p>
               <p className="pipeline-next-action">Next action: {pipelineHealth.next_action}</p>
 
               <div className="pipeline-stage-list">
@@ -1252,15 +1294,19 @@ export function DiagnosticsPanel() {
           {loadingDiscord && (
             <div className="parity-detail-card">
               <p className="section-loading">Loading Discord configuration...</p>
+              <div className="skeleton-stack">
+                <div className="skeleton-line" />
+              </div>
             </div>
           )}
-          <div className="parity-detail-card">
+          <div className={`parity-detail-card progressive-card ${loadingDiscord ? "is-loading" : "is-ready"}`}>
             <div className="chart-header">
               <h3>Discord Notifications</h3>
               <span className={`pipeline-status-pill ${discordEnabled ? "ok" : "warn"}`}>
                 {discordEnabled ? "Configured" : "Not Configured"}
               </span>
             </div>
+            <p className="section-meta">{formatSectionLoadedAt(discordLoadedAt)}</p>
             <p>
               Configure a Discord webhook and choose which operational alerts should be sent automatically.
             </p>
@@ -1392,13 +1438,18 @@ export function DiagnosticsPanel() {
           {loadingFeedHealth && (
             <div className="parity-detail-card">
               <p className="section-loading">Loading feed health by source...</p>
+              <div className="skeleton-stack">
+                <div className="skeleton-line long" />
+                <div className="skeleton-line" />
+              </div>
             </div>
           )}
-          <div className="parity-detail-card">
+          <div className={`parity-detail-card progressive-card ${loadingFeedHealth ? "is-loading" : "is-ready"}`}>
             <div className="chart-header">
               <h3>External Feed Health</h3>
               <span className="pipeline-status-pill ok">Real-time Monitoring</span>
             </div>
+            <p className="section-meta">{formatSectionLoadedAt(feedHealthLoadedAt)}</p>
             <p>
               Status of all upstream data sources. Use this to identify which feed is broken when forecasts fail.
             </p>
