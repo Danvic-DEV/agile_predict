@@ -63,7 +63,7 @@ export function TrainingModeBanner() {
       <div className="banner-content">
         <span className="banner-icon">📊</span>
         <div className="banner-text">
-          <strong>System in Training Mode</strong>
+          <strong>Customer Forecasts Disabled</strong>
           <div className="banner-meta-row">
             <span className={`scorecard-confidence ${confidenceLabel}`}>
               {confidenceLabel.toUpperCase()} confidence
@@ -74,7 +74,7 @@ export function TrainingModeBanner() {
             </span>
           </div>
           <p>
-            Accumulating data for ML model. Once sufficient historical data exists, the system will automatically enable ML forecasting.
+            The system is still in training or deterministic mode. Customer-facing forecasts remain blocked until a trusted ML forecast is available.
           </p>
           {refreshError && <p className="banner-error">{refreshError}</p>}
         </div>

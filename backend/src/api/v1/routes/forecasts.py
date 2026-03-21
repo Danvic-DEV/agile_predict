@@ -2,10 +2,27 @@ from fastapi import APIRouter, HTTPException, Query
 
 from src.api.v1.deps import UnitOfWorkDep, ForecastRepositoryDep
 from src.api.errors import http_error
+from src.core.update_job_state import read_last_update_job_state
 from src.core.regions import REGION_FACTORS
 from src.schemas.forecast import ForecastDataPoint, ForecastSummary, ForecastWithPrices
 
 router = APIRouter()
+
+
+def _ensure_customer_forecast_is_trusted() -> None:
+    state = read_last_update_job_state() or {}
+    if (
+        state.get("source") == "ml"
+        and state.get("ml_write_mode") == "ml"
+        and not bool(state.get("training_mode", False))
+    ):
+        return
+
+    raise http_error(
+        503,
+        "customer_forecast_unavailable",
+        "Customer-facing forecast output is disabled until a trusted ML forecast is available.",
+    )
 
 
 @router.get("", response_model=list[ForecastSummary])
@@ -13,6 +30,7 @@ def list_forecasts(
     repo: ForecastRepositoryDep,
     limit: int = Query(default=1, ge=1, le=30),
 ) -> list[ForecastSummary]:
+    _ensure_customer_forecast_is_trusted()
     return repo.list_latest(limit=limit)
 
 
@@ -24,6 +42,7 @@ def list_forecasts_with_prices(
     forecast_count: int = Query(default=1, ge=1, le=30),
     high_low: bool = Query(default=True),
 ) -> list[ForecastWithPrices]:
+    _ensure_customer_forecast_is_trusted()
     rows = repo.list_with_prices(
         region=region,
         days=days,

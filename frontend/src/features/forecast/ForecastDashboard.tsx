@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { fetchForecastPrices, fetchForecasts, fetchRegions } from "./api";
+import { ApiError } from "../../lib/api/client";
 import type { AgilePricePoint, ForecastSummary, ForecastWithPrices } from "../../lib/api/types";
 
 type LoadState = "idle" | "loading" | "loaded" | "error";
+
+type CustomerForecastStatus = "available" | "disabled";
 
 const CHART_WIDTH = 720;
 const CHART_HEIGHT = 240;
@@ -50,6 +53,7 @@ export function ForecastDashboard() {
   const [forecastCount, setForecastCount] = useState(1);
   const [state, setState] = useState<LoadState>("idle");
   const [error, setError] = useState<string>("");
+  const [customerForecastStatus, setCustomerForecastStatus] = useState<CustomerForecastStatus>("available");
   const [refreshToken, setRefreshToken] = useState(0);
 
   useEffect(() => {
@@ -73,13 +77,20 @@ export function ForecastDashboard() {
         if (!options.includes(selectedRegion)) {
           setSelectedRegion("ALL");
         }
+        setCustomerForecastStatus("available");
         setState("loaded");
         setError("");
       } catch (err) {
         if (!active) {
           return;
         }
-        setError(err instanceof Error ? err.message : "Failed loading forecast dashboard");
+        if (err instanceof ApiError && err.code === "customer_forecast_unavailable") {
+          setCustomerForecastStatus("disabled");
+          setError(err.message);
+        } else {
+          setCustomerForecastStatus("available");
+          setError(err instanceof Error ? err.message : "Failed loading forecast dashboard");
+        }
         setState("error");
       }
     }
@@ -148,7 +159,16 @@ export function ForecastDashboard() {
         </button>
       </div>
       {state === "loading" && <p>Loading latest forecast snapshots...</p>}
-      {state === "error" && <p>Load failed: {error}</p>}
+      {state === "error" && customerForecastStatus === "disabled" && (
+        <div className="forecast-blocked-card" role="alert">
+          <strong>Customer forecast output is disabled</strong>
+          <p>{error}</p>
+          <p>
+            The current pipeline is not serving trusted ML output, so customer-facing forecast data is intentionally blocked.
+          </p>
+        </div>
+      )}
+      {state === "error" && customerForecastStatus === "available" && <p>Load failed: {error}</p>}
       {state === "loaded" && (
         <>
           <div className="metric-grid">

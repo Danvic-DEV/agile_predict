@@ -537,8 +537,59 @@ export function DiagnosticsPanel() {
   const featuresPath = buildSparklinePath(growthSnapshots.map((s) => s.featureRows));
   const trendHasData = growthSnapshots.length >= 2;
 
+  const trustedCustomerForecastAvailable =
+    data?.update_source === "ml" && data?.update_ml_write_mode === "ml" && !data?.training_mode;
+
+  const customerAvailabilityVerdict: { state: "pass" | "fail" | "pending"; title: string; detail: string } = (() => {
+    if (loadingDiagnostics || !data) {
+      return {
+        state: "pending",
+        title: "Customer Availability: CHECKING",
+        detail: "Refreshing latest update-state signals...",
+      };
+    }
+
+    if (trustedCustomerForecastAvailable) {
+      return {
+        state: "pass",
+        title: "Customer Availability: ENABLED",
+        detail: "Customer-facing forecast endpoints are backed by trusted ML output.",
+      };
+    }
+
+    if (data.training_mode || data.update_ml_write_mode === "deterministic") {
+      return {
+        state: "fail",
+        title: "Customer Availability: DISABLED",
+        detail: "Last update ran in training or deterministic mode, so customer forecasts are intentionally blocked.",
+      };
+    }
+
+    if (data.update_ml_write_mode === "shadow") {
+      return {
+        state: "fail",
+        title: "Customer Availability: DISABLED",
+        detail: "Last update ran in shadow mode, which does not permit customer-facing forecast output.",
+      };
+    }
+
+    if (data.update_ml_error) {
+      return {
+        state: "fail",
+        title: "Customer Availability: DISABLED",
+        detail: `ML write is not trusted: ${data.update_ml_error}`,
+      };
+    }
+
+    return {
+      state: "fail",
+      title: "Customer Availability: DISABLED",
+      detail: `Last update source was ${data.update_source ?? "unknown"}, not trusted ML output.`,
+    };
+  })();
+
   const statusTabHealth: "ok" | "warn" | "bad" | "loading" =
-    loadingDiagnostics ? "loading" : error ? "bad" : "ok";
+    loadingDiagnostics ? "loading" : error ? "bad" : customerAvailabilityVerdict.state === "fail" ? "warn" : "ok";
 
   const mlTabHealth: "ok" | "warn" | "bad" | "loading" =
     loadingParitySummary || loadingScorecard
@@ -901,6 +952,11 @@ export function DiagnosticsPanel() {
 
           {(data || loadingDiagnostics) && (
             <>
+              <div className={`truth-verdict-banner ${customerAvailabilityVerdict.state}`}>
+                <strong>{customerAvailabilityVerdict.title}</strong>
+                <span>{customerAvailabilityVerdict.detail}</span>
+              </div>
+
               <div className={`update-run-card progressive-card ${loadingDiagnostics ? "is-loading" : "is-ready"}`}>
                 <h3>Last Update Run</h3>
                 <div className="update-run-topline">
