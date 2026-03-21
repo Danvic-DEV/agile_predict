@@ -8,6 +8,7 @@ import type {
   IngestPipelineHealth,
   LatestForecastDiagnostics,
   MlGpuStatus,
+  MlWriteModeStatus,
   MlParityScorecard,
   PipelineTruthAudit,
   ParityHistoryResponse,
@@ -35,6 +36,14 @@ export function fetchMlGpuStatus(): Promise<MlGpuStatus> {
 
 export function setMlGpuStatus(enabled: boolean): Promise<MlGpuStatus> {
   return postJson<MlGpuStatus, { enabled: boolean }>("/diagnostics/ml-gpu-status", { enabled });
+}
+
+export function fetchMlWriteMode(): Promise<MlWriteModeStatus> {
+  return getJson<MlWriteModeStatus>("/diagnostics/ml-write-mode");
+}
+
+export function setMlWriteMode(mode: MlWriteModeStatus["mode"]): Promise<MlWriteModeStatus> {
+  return postJson<MlWriteModeStatus, { mode: MlWriteModeStatus["mode"] }>("/diagnostics/ml-write-mode", { mode });
 }
 
 export function fetchDiscordConfig(): Promise<DiscordConfigStatus> {

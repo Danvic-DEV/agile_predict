@@ -141,6 +141,10 @@ export interface MlGpuStatus {
   tested_at: string | null;
 }
 
+export interface MlWriteModeStatus {
+  mode: "deterministic" | "shadow" | "ml";
+}
+
 export interface DiscordNotificationPreferences {
   update_started: boolean;
   update_success: boolean;

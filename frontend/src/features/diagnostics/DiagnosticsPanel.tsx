@@ -6,6 +6,7 @@ import {
   fetchIngestPipelineHealth,
   fetchLatestDiagnostics,
   fetchMlGpuStatus,
+  fetchMlWriteMode,
   fetchPipelineTruthAudit,
   fetchParityHistory,
   fetchLatestParitySummary,
@@ -15,6 +16,7 @@ import {
   sendDiscordTest,
   setDiscordConfig,
   setMlGpuStatus,
+  setMlWriteMode as setMlWriteModeConfig,
 } from "./api";
 import type {
   DiscordNotificationPreferences,
@@ -22,6 +24,7 @@ import type {
   LatestForecastDiagnostics,
   LatestParitySummary,
   MlGpuStatus,
+  MlWriteModeStatus,
   MlParityScorecard,
   PipelineTruthAudit,
   ParityHistoryItem,
@@ -203,6 +206,7 @@ export function DiagnosticsPanel() {
   const [parity, setParity] = useState<LatestParitySummary | null>(null);
   const [scorecard, setScorecard] = useState<MlParityScorecard | null>(null);
   const [gpuStatus, setGpuStatus] = useState<MlGpuStatus | null>(null);
+  const [mlWriteMode, setMlWriteMode] = useState<MlWriteModeStatus["mode"]>("deterministic");
   const [parityHistory, setParityHistory] = useState<ParityHistoryItem[]>([]);
   const [pipelineHealth, setPipelineHealth] = useState<IngestPipelineHealth | null>(null);
   const [pipelineTruthAudit, setPipelineTruthAudit] = useState<PipelineTruthAudit | null>(null);
@@ -236,6 +240,7 @@ export function DiagnosticsPanel() {
   const [loadingPipeline, setLoadingPipeline] = useState(true);
   const [loadingPipelineTruth, setLoadingPipelineTruth] = useState(true);
   const [loadingGpu, setLoadingGpu] = useState(true);
+  const [loadingMlWriteMode, setLoadingMlWriteMode] = useState(true);
   const [loadingFeedHealth, setLoadingFeedHealth] = useState(true);
   const [loadingDiscord, setLoadingDiscord] = useState(true);
   const [diagnosticsLoadedAt, setDiagnosticsLoadedAt] = useState<string | null>(null);
@@ -374,6 +379,19 @@ export function DiagnosticsPanel() {
     }
   }
 
+  async function refreshMlWriteMode() {
+    setLoadingMlWriteMode(true);
+    try {
+      const modeResult = await fetchMlWriteMode();
+      setMlWriteMode(modeResult.mode);
+      setParityError("");
+    } catch (err) {
+      setParityError(err instanceof Error ? err.message : "Failed loading ML write mode");
+    } finally {
+      setLoadingMlWriteMode(false);
+    }
+  }
+
   async function refreshFeedHealth() {
     setLoadingFeedHealth(true);
     try {
@@ -414,6 +432,7 @@ export function DiagnosticsPanel() {
       refreshPipelineHealth(),
       refreshPipelineTruthAudit(),
       refreshGpuStatus(),
+      refreshMlWriteMode(),
       refreshFeedHealth(),
       refreshDiscordConfig(),
     ]);
@@ -427,6 +446,7 @@ export function DiagnosticsPanel() {
     void refreshPipelineHealth();
     void refreshPipelineTruthAudit();
     void refreshGpuStatus();
+    void refreshMlWriteMode();
     void refreshFeedHealth();
     void refreshDiscordConfig();
   }, [historyStatusFilter, historyWindowHours, historyOffset]);
@@ -761,6 +781,23 @@ export function DiagnosticsPanel() {
       );
     } catch (err) {
       setActionMessage(err instanceof Error ? err.message : "Failed to update GPU setting");
+    } finally {
+      setActionState("idle");
+    }
+  }
+
+  async function handleMlWriteModeChange(mode: MlWriteModeStatus["mode"]) {
+    setActiveActionKind("update");
+    setActionState("running");
+    setActionMessage("");
+    try {
+      const nextMode = await setMlWriteModeConfig(mode);
+      setMlWriteMode(nextMode.mode);
+      setActionMessage(`ML write mode set to ${nextMode.mode}.`);
+      await refreshDiagnostics();
+      await refreshScorecard();
+    } catch (err) {
+      setActionMessage(err instanceof Error ? err.message : "Failed to update ML write mode");
     } finally {
       setActionState("idle");
     }
@@ -1530,6 +1567,18 @@ export function DiagnosticsPanel() {
             <h3>Update Forecast Job</h3>
             <p>Run a complete update: ingest data, train ML, write forecasts, evaluate parity.</p>
             <div className="controls-row">
+              <label>
+                ML Write Mode
+                <select
+                  value={mlWriteMode}
+                  onChange={(event) => void handleMlWriteModeChange(event.target.value as MlWriteModeStatus["mode"])}
+                  disabled={actionState === "running" || loadingMlWriteMode}
+                >
+                  <option value="deterministic">Deterministic</option>
+                  <option value="shadow">Shadow</option>
+                  <option value="ml">ML</option>
+                </select>
+              </label>
               <button type="button" onClick={handleRunUpdateJob} disabled={actionState === "running"}>
                 {actionState === "running" && activeActionKind === "update" ? "Running Update Job..." : "Run Update Job"}
               </button>

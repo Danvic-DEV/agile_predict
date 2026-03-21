@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -102,6 +103,14 @@ class MlGpuStatus(BaseModel):
     reason: str | None
     xgboost_version: str | None
     tested_at: str | None
+
+
+class MlWriteModeRequest(BaseModel):
+    mode: Literal["deterministic", "shadow", "ml"]
+
+
+class MlWriteModeStatus(BaseModel):
+    mode: Literal["deterministic", "shadow", "ml"]
 
 
 class DiscordNotificationPreferences(BaseModel):

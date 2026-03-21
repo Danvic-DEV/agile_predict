@@ -93,7 +93,7 @@ def run_update_forecast_job(uow: UnitOfWork) -> ForecastRunResult:
         gpu_reason = gpu_probe.reason or "GPU test failed"
         ml_error = f"GPU requested but unavailable: {gpu_reason}"
 
-    configured_ml_write_mode = settings.ml_write_mode
+    configured_ml_write_mode = gpu_config.get("write_mode") or settings.ml_write_mode
     ml_ready, ml_ready_reason = check_ml_training_readiness(uow=uow)
     ml_write_mode = configured_ml_write_mode
     training_mode = ml_write_mode == "deterministic"

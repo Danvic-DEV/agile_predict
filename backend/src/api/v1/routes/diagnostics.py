@@ -17,6 +17,7 @@ from src.core.discord_runtime_config import (
 )
 from src.core.feed_health import get_feed_health
 from src.core.ml_runtime_config import read_ml_runtime_config, write_ml_runtime_config
+from src.core.settings import settings
 from src.core.update_job_state import read_last_update_job_state, read_update_job_history
 from src.ml.gpu_support import probe_xgboost_cuda
 from src.repositories.sql_models import ExternalSystemContextORM, ForecastDataORM, ForecastORM, PriceHistoryORM
@@ -31,6 +32,8 @@ from src.schemas.diagnostics import (
     PipelineTruthIssue,
     MlGpuConfigRequest,
     MlGpuStatus,
+    MlWriteModeRequest,
+    MlWriteModeStatus,
     LatestForecastDiagnostics,
     LatestParitySummary,
     MlParityScorecard,
@@ -145,6 +148,14 @@ def _build_ml_gpu_status(*, force_test: bool = False) -> MlGpuStatus:
         xgboost_version=probe.xgboost_version,
         tested_at=probe.tested_at,
     )
+
+
+def _resolve_ml_write_mode() -> str:
+    config = read_ml_runtime_config()
+    runtime_mode = config.get("write_mode")
+    if runtime_mode in {"deterministic", "shadow", "ml"}:
+        return runtime_mode
+    return settings.ml_write_mode
 
 
 def _build_discord_config_status() -> DiscordConfigStatus:
@@ -296,6 +307,17 @@ def ml_gpu_status() -> MlGpuStatus:
 def set_ml_gpu_status(payload: MlGpuConfigRequest) -> MlGpuStatus:
     write_ml_runtime_config(gpu_enabled=payload.enabled)
     return _build_ml_gpu_status(force_test=True)
+
+
+@router.get("/ml-write-mode", response_model=MlWriteModeStatus)
+def ml_write_mode_status() -> MlWriteModeStatus:
+    return MlWriteModeStatus(mode=_resolve_ml_write_mode())
+
+
+@router.post("/ml-write-mode", response_model=MlWriteModeStatus)
+def set_ml_write_mode(payload: MlWriteModeRequest) -> MlWriteModeStatus:
+    write_ml_runtime_config(write_mode=payload.mode)
+    return MlWriteModeStatus(mode=payload.mode)
 
 
 @router.get("/discord-config", response_model=DiscordConfigStatus)

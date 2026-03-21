@@ -221,3 +221,52 @@ def test_run_update_forecast_job_rejects_degenerate_ml_output(monkeypatch) -> No
         update_forecast.run_update_forecast_job(uow=cast(Any, uow))
 
     assert "degenerate" in str(exc_info.value)
+
+
+def test_run_update_forecast_job_uses_runtime_write_mode_override(monkeypatch) -> None:
+    uow = _FakeUow()
+
+    monkeypatch.setattr(
+        update_forecast,
+        "run_forecast_pipeline",
+        lambda **kwargs: ForecastPipelineOutput(
+            day_ahead_values=(70.0, 71.0, 72.0),
+            source="nordpool",
+            agile_preview_mean=18.0,
+        ),
+    )
+    monkeypatch.setattr(update_forecast.settings, "ml_write_mode", "deterministic")
+    monkeypatch.setattr(update_forecast, "read_ml_runtime_config", lambda: {"gpu_enabled": False, "write_mode": "ml"})
+    monkeypatch.setattr(
+        update_forecast,
+        "run_ml_day_ahead_forecast",
+        lambda **kwargs: MlParityForecastOutput(
+            day_ahead_values=(80.0, 81.0, 82.0),
+            day_ahead_low_values=(78.0, 79.0, 80.0),
+            day_ahead_high_values=(82.0, 83.0, 84.0),
+            cv_mean_rmse=3.2,
+            cv_stdev_rmse=0.4,
+            training_rows=120,
+            test_rows=40,
+            feature_columns=("bm_wind", "solar"),
+            range_mode="kde",
+        ),
+    )
+
+    state_call: dict[str, Any] = {}
+    monkeypatch.setattr(update_forecast, "write_last_update_job_state", lambda **kwargs: state_call.update(kwargs))
+
+    captured: dict[str, Any] = {}
+
+    def _fake_write_bootstrap_bundle(*, uow: Any, config: Any) -> _FakeResult:
+        captured["config"] = config
+        return _FakeResult(forecast_data_points_written=3, agile_data_points_written=6)
+
+    monkeypatch.setattr(update_forecast, "write_bootstrap_bundle", _fake_write_bootstrap_bundle)
+
+    result = update_forecast.run_update_forecast_job(uow=cast(Any, uow))
+
+    config = captured["config"]
+    assert config.day_ahead_values == (80.0, 81.0, 82.0)
+    assert result.source == "ml"
+    assert state_call["ml_write_mode"] == "ml"
