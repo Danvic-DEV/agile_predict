@@ -217,23 +217,7 @@ def test_run_update_forecast_job_rejects_degenerate_ml_output(monkeypatch) -> No
     )
     monkeypatch.setattr(update_forecast.settings, "ml_write_mode", "ml")
 
-    state_call: dict[str, Any] = {}
-    monkeypatch.setattr(update_forecast, "write_last_update_job_state", lambda **kwargs: state_call.update(kwargs))
+    with pytest.raises(RuntimeError) as exc_info:
+        update_forecast.run_update_forecast_job(uow=cast(Any, uow))
 
-    captured: dict[str, Any] = {}
-
-    def _fake_write_bootstrap_bundle(*, uow: Any, config: Any) -> _FakeResult:
-        captured["config"] = config
-        return _FakeResult(forecast_data_points_written=3, agile_data_points_written=6)
-
-    monkeypatch.setattr(update_forecast, "write_bootstrap_bundle", _fake_write_bootstrap_bundle)
-
-    result = update_forecast.run_update_forecast_job(uow=cast(Any, uow))
-
-    config = captured["config"]
-    assert config.day_ahead_values == (70.0, 71.0, 72.0)
-    assert config.day_ahead_low_values is None
-    assert config.day_ahead_high_values is None
-    assert result.source == "nordpool"
-    assert state_call["ml_error"] is not None
-    assert "degenerate" in state_call["ml_error"]
+    assert "degenerate" in str(exc_info.value)

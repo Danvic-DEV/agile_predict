@@ -93,11 +93,9 @@ def run_update_forecast_job(uow: UnitOfWork) -> ForecastRunResult:
         gpu_reason = gpu_probe.reason or "GPU test failed"
         ml_error = f"GPU requested but unavailable: {gpu_reason}"
 
-    # Auto-enable real ML only when strict readiness checks pass.
     configured_ml_write_mode = settings.ml_write_mode
     ml_ready, ml_ready_reason = check_ml_training_readiness(uow=uow)
-    auto_enable_ml = configured_ml_write_mode == "deterministic" and ml_ready
-    ml_write_mode = "ml" if auto_enable_ml else configured_ml_write_mode
+    ml_write_mode = configured_ml_write_mode
     training_mode = ml_write_mode == "deterministic"
     if training_mode and ml_ready_reason is not None:
         ml_error = ml_ready_reason
@@ -113,14 +111,8 @@ def run_update_forecast_job(uow: UnitOfWork) -> ForecastRunResult:
         except Exception as exc:
             ml_error = str(exc)
             ml_device_used = "cpu"  # Fallback to cpu on error
-            if auto_enable_ml:
-                # Stay in training mode until ML can run successfully.
-                ml_write_mode = "deterministic"
-                training_mode = True
-                day_ahead_values = deterministic_values
-                day_ahead_low_values = None
-                day_ahead_high_values = None
-                source = pipeline.source
+            if ml_write_mode == "ml":
+                raise RuntimeError(f"ML forecast failed with fallback disabled: {exc}") from exc
             elif not settings.allow_ml_fallback:
                 raise RuntimeError(f"ML forecast failed with fallback disabled: {exc}") from exc
             else:
@@ -145,14 +137,12 @@ def run_update_forecast_job(uow: UnitOfWork) -> ForecastRunResult:
 
             if ml_write_mode == "ml":
                 if _is_degenerate_ml_output(ml_output.day_ahead_values):
-                    ml_error = (
+                    reason = (
                         f"ML output rejected as degenerate: zero_ratio={_zero_ratio(ml_output.day_ahead_values):.1%}, "
                         f"points={len(ml_output.day_ahead_values)}"
                     )
-                    day_ahead_values = deterministic_values
-                    day_ahead_low_values = None
-                    day_ahead_high_values = None
-                    source = pipeline.source
+                    ml_error = reason
+                    raise RuntimeError(reason)
                 else:
                     day_ahead_values = ml_output.day_ahead_values
                     day_ahead_low_values = ml_output.day_ahead_low_values
