@@ -24,12 +24,19 @@ def list_forecasts_with_prices(
     forecast_count: int = Query(default=1, ge=1, le=30),
     high_low: bool = Query(default=True),
 ) -> list[ForecastWithPrices]:
-    return repo.list_with_prices(
+    rows = repo.list_with_prices(
         region=region,
         days=days,
         forecast_count=forecast_count,
         include_high_low=high_low,
     )
+    if not rows:
+        raise http_error(
+            503,
+            "no_operational_forecast_available",
+            "No operational forecast is currently available for customer-facing prices.",
+        )
+    return rows
 
 
 @router.get("/{forecast_id}/data", response_model=list[ForecastDataPoint])

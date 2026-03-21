@@ -14,9 +14,17 @@ class ForecastRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
+    def _list_latest_operational(self, limit: int) -> list[ForecastORM]:
+        stmt = (
+            select(ForecastORM)
+            .where(~ForecastORM.name.like("bundle::history-%"))
+            .order_by(ForecastORM.created_at.desc())
+            .limit(limit)
+        )
+        return self.session.execute(stmt).scalars().all()
+
     def list_latest(self, limit: int = 1) -> list[ForecastSummary]:
-        stmt = select(ForecastORM).order_by(ForecastORM.created_at.desc()).limit(limit)
-        rows = self.session.execute(stmt).scalars().all()
+        rows = self._list_latest_operational(limit=limit)
         return [ForecastSummary(id=row.id, name=row.name, created_at=row.created_at) for row in rows]
 
     def list_with_prices(
@@ -26,8 +34,7 @@ class ForecastRepository:
         forecast_count: int,
         include_high_low: bool,
     ) -> list[ForecastWithPrices]:
-        forecasts_stmt = select(ForecastORM).order_by(ForecastORM.created_at.desc()).limit(forecast_count)
-        forecasts = self.session.execute(forecasts_stmt).scalars().all()
+        forecasts = self._list_latest_operational(limit=forecast_count)
         if not forecasts:
             return []
 

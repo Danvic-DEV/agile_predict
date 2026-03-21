@@ -501,11 +501,6 @@ def pipeline_truth_audit(uow: UnitOfWorkDep) -> PipelineTruthAudit:
         ).scalar_one_or_none()
 
     if latest_forecast is None:
-        latest_forecast = uow.session.execute(
-            select(ForecastORM).order_by(ForecastORM.created_at.desc()).limit(1)
-        ).scalar_one_or_none()
-
-    if latest_forecast is None:
         return PipelineTruthAudit(
             generated_at=now.isoformat(),
             trust_level="low",
@@ -521,9 +516,9 @@ def pipeline_truth_audit(uow: UnitOfWorkDep) -> PipelineTruthAudit:
             latest_data_freshness_minutes=None,
             issues=[
                 PipelineTruthIssue(
-                    code="no_forecast_rows",
+                    code="no_operational_forecast",
                     severity="critical",
-                    detail="No forecast runs exist in storage.",
+                    detail="No operational forecast run exists in storage.",
                 )
             ],
         )
