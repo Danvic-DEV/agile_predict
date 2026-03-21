@@ -1,7 +1,7 @@
-# ML Parity Plan (Legacy Django -> FastAPI)
+# ML Parity Plan (Legacy Pipeline -> FastAPI)
 
 ## Goal
-Rebuild the legacy working ML behavior from Django command `update.py` inside the new FastAPI pipeline, while keeping the new architecture (domain modules, repositories, single-container runtime, diagnostics).
+Rebuild the legacy working ML behavior from command `update.py` inside the new FastAPI pipeline, while keeping the new architecture (domain modules, repositories, single-container runtime, diagnostics).
 
 ## Status (2026-03-17)
 - Completed: strict no-fallback defaults are enabled for ingest, ML update execution, and startup seeding.

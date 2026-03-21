@@ -4,13 +4,7 @@ channels:
   - defaults
 dependencies:
   - python=3.12
-  - django=4.2.*
-  - djangorestframework
-  - environs
-  - psycopg2-binary
-  - dj-database-url
-  - django-crispy-forms
-  - crispy-bootstrap5
+  - pip
   - matplotlib
   - seaborn
   - numpy
@@ -21,9 +15,6 @@ dependencies:
   - tables
   - xgboost
   - requests
-  - pip
   - pip:
-    - blosc2
-    - whitenoise
-    - python-dotenv
+    - -r backend/requirements.txt
     - black

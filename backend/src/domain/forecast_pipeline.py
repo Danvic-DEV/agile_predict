@@ -67,7 +67,8 @@ def _ingest_stage(
             if attempt < max_attempts - 1:
                 time.sleep(retry_backoff_seconds * (attempt + 1))
 
-    record_feed_error("nordpool_da", last_error or "unknown error")    if settings.allow_ingest_fallback:
+    record_feed_error("nordpool_da", last_error or "unknown error")
+    if settings.allow_ingest_fallback:
         fallback = _fallback_day_ahead_series(points=fallback_points)
         return fallback, "fallback", last_error, max_attempts - 1, len(fallback)
 

@@ -6,11 +6,11 @@ Used by diagnostics UI to show which feeds are healthy/stale/failed.
 """
 
 import json
-from dataclasses import dataclass, field, asdict
-from datetime import datetime
+from dataclasses import dataclass, asdict
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Optional
-from config.settings import CONFIG_DIR
+from src.core.settings import CONFIG_DIR
 
 
 # Feed source identifiers matching ingest code
@@ -128,7 +128,7 @@ def record_feed_success(
     health = _read_feed_health()
     entry = health.get(source_id, FeedHealthEntry(source_id=source_id, name=FEED_SOURCES[source_id]["name"]))
     
-    entry.last_successful_pull = datetime.utcnow().isoformat() + "Z"
+    entry.last_successful_pull = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     entry.records_received = records_received
     entry.last_error = None
     entry.error_count = 0
@@ -150,7 +150,7 @@ def record_feed_error(
     
     entry.last_error = error_message
     entry.error_count = entry.error_count + 1
-    entry.last_error_time = datetime.utcnow().isoformat() + "Z"
+    entry.last_error_time = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     
     health[source_id] = entry
     _write_feed_health(health)
@@ -159,7 +159,7 @@ def record_feed_error(
 def get_feed_health() -> Dict[str, dict]:
     """Get current health status for all feeds, with computed status."""
     health = _read_feed_health()
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     
     result = {}
     for source_id, entry in health.items():

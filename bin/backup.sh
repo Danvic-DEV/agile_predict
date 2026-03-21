@@ -6,9 +6,9 @@ set -euo pipefail
 NOW=$(date +"%Y-%m-%d_%H-%M-%S")
 
 # Load environment
-if [ -f /home/boundys/data4/django/agile_predict/.env ]; then
+if [ -f .env ]; then
     set -a
-    . /home/boundys/data4/django/agile_predict/.env
+    . ./.env
     set +a
 else
     echo "Missing .env file"

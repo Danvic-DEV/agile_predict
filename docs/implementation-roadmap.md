@@ -101,7 +101,7 @@ Automated test workflow:
 
 ## Notes
 
-- The legacy Django app remains untouched.
+- The legacy app code has been removed from this repository.
 - New scaffolding is under `backend`, `frontend`, `deploy`, and `shared`, but runtime packaging is now a single container.
 - Migration implementation is active on branch `migration/standard-stack-foundation`.
 
@@ -205,5 +205,5 @@ curl -X POST http://localhost:8010/api/v1/admin-jobs/bootstrap-forecast-bundle \
 
 ## ML Parity Plan
 
-- Legacy Django ML behavior is being ported with architecture parity in `docs/ml-parity-plan.md`.
+- Legacy ML behavior is being ported with architecture parity in `docs/ml-parity-plan.md`.
 - This plan captures the exact legacy `update.py` training behavior (features, XGBoost parameters, sample weighting, confidence interval generation, and regional output conversion) and maps it to the FastAPI pipeline.

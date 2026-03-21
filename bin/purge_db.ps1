@@ -49,14 +49,14 @@ Write-Host "Dropping database '$DBNAME'..."
 Write-Host "Creating database '$DBNAME'..."
 & "$createdb" -U $PGUSER $DBNAME
 
-# Run Django migrations to initialize the database
-Write-Host "Running migrations to initialize the database..."
-python manage.py migrate --noinput
+# Restore backup into recreated database
+Write-Host "Restoring backup '$WIN_BACKUP_FILE' into '$DBNAME'..."
+& "$psql" -U $PGUSER -d $DBNAME -f $WIN_BACKUP_FILE
 
 if ($LASTEXITCODE -eq 0) {
-    Write-Host "Empty database created successfully."
+    Write-Host "Database restored successfully."
 }
 else {
-    Write-Error "Migration failed."
+    Write-Error "Database restore failed."
     exit 1
 }

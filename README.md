@@ -9,7 +9,7 @@ Electricity Supply Operator (<a href="https://www.nationalgrideso.com/data-porta
 
 ## Developing for this project
 
-This project is made using Python and Django. Here is some instructions to get you started if you want to develop for the project.
+This project runs as a FastAPI + React stack in a single container.
 
 ### Create a virtual environment
 
@@ -38,13 +38,13 @@ pip install -r requirements.txt
 
 ### Running the project
 
-Run the project via the Django manage.py script. It's as simple as:
+Use the local stack helper:
 
-```
-python manage.py runserver
+```bash
+./bin/start_local_stack.sh
 ```
 
-Have fun!
+Or run the FastAPI app directly from `backend/` with your preferred tooling.
 
 ---
 
