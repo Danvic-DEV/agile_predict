@@ -155,7 +155,7 @@ def _to_dataframe(rows: list[object], cols: list[str]) -> pd.DataFrame:
 
 def check_ml_training_readiness(
     uow: UnitOfWork,
-    max_days: int = 60,
+    max_days: int = 180,
     min_joined_rows: int = 30,
 ) -> tuple[bool, str | None]:
     """Return whether ML training can run with the current legacy filters."""
@@ -175,7 +175,7 @@ def check_ml_training_readiness(
     ff["created_at"] = pd.to_datetime(ff["created_at"], utc=True)
     ff["date"] = ff["created_at"].dt.tz_convert("GB").dt.normalize()
     ff["ag_start"] = ff["created_at"].dt.normalize() + pd.Timedelta(hours=22)
-    ff["ag_end"] = ff["created_at"].dt.normalize() + pd.Timedelta(hours=46)
+    ff["ag_end"] = ff["created_at"].dt.normalize() + pd.Timedelta(hours=334)  # 13 days + 22h start offset
     ff["dt1600"] = (
         (ff["date"] + pd.Timedelta(hours=16, minutes=15) - ff["created_at"].dt.tz_convert("GB"))
         .dt.total_seconds()
@@ -226,7 +226,7 @@ def run_ml_day_ahead_forecast(
     point_count: int,
     future_feature_frame: pd.DataFrame,
     bridge_day_ahead_values: tuple[float, ...] | None = None,
-    max_days: int = 60,
+    max_days: int = 180,
     no_ranges: bool = False,
     use_gpu: bool = False,
 ) -> MlParityForecastOutput:
@@ -246,7 +246,7 @@ def run_ml_day_ahead_forecast(
     ff["created_at"] = pd.to_datetime(ff["created_at"], utc=True)
     ff["date"] = ff["created_at"].dt.tz_convert("GB").dt.normalize()
     ff["ag_start"] = ff["created_at"].dt.normalize() + pd.Timedelta(hours=22)
-    ff["ag_end"] = ff["created_at"].dt.normalize() + pd.Timedelta(hours=46)
+    ff["ag_end"] = ff["created_at"].dt.normalize() + pd.Timedelta(hours=334)  # 13 days + 22h start offset
     ff["dt1600"] = (
         (ff["date"] + pd.Timedelta(hours=16, minutes=15) - ff["created_at"].dt.tz_convert("GB"))
         .dt.total_seconds()
