@@ -6,7 +6,7 @@ This folder contains example configurations to integrate Agile Predict's electri
 
 - **REST Sensor**: Automatically fetch ML-based price predictions every 30 minutes
 - **ApexCharts Card**: Visual comparison of predicted vs actual Octopus Agile prices
-- **7-day forecast**: See upcoming price predictions with min/max ranges
+- **Up to 13-day forecasts**: See upcoming price predictions with min/max ranges (default: 7 days)
 - **Real-time updates**: Predictions improve as the model accumulates training data
 
 ## Prerequisites

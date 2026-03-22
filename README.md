@@ -8,7 +8,7 @@ Agile Predict forecasts Octopus Agile electricity prices using a pipeline that c
 
 The public web interface is available at **[agilepredict.danvic.dev](https://agilepredict.danvic.dev/)** and provides:
 
-- 7-day electricity price predictions for all UK regions
+- Up to 13-day electricity price forecasts for all UK regions
 - Interactive charts comparing predictions with actual prices
 - Real-time cache status and model training data indicators
 - Read-only REST API for programmatic access
