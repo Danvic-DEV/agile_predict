@@ -384,6 +384,7 @@ async def public_forecast_availability():
             region: sorted(by_days.keys())
             for region, by_days in snapshot.prices_by_region_and_days.items()
         },
+        "refreshed_at": snapshot.refreshed_at,
         "default_days": DEFAULT_DAYS,
         "min_days": MIN_DAYS,
         "max_days": MAX_DAYS,
@@ -507,6 +508,16 @@ async def index() -> HTMLResponse:
         .controls-row button:hover {
             border-color: rgba(242, 184, 75, 0.55);
             color: #f2b84b;
+        }
+        .control-note {
+            border-radius: 8px;
+            border: 1px solid rgba(201, 214, 220, 0.35);
+            background: rgba(10, 20, 30, 0.65);
+            color: #f4f1e8;
+            padding: 8px 10px;
+            min-height: 38px;
+            display: inline-flex;
+            align-items: center;
         }
         .metric-grid {
             display: grid;
@@ -838,8 +849,8 @@ async def index() -> HTMLResponse:
                     <select id=\"days\"></select>
                 </label>
                 <label>
-                    Forecast Count
-                    <input id=\"forecast_count\" type=\"number\" min=\"1\" max=\"1\" value=\"1\" disabled />
+                    Data Age
+                    <span id=\"cache_age\" class=\"control-note\">-</span>
                 </label>
                 <button id=\"refresh\" type=\"button\">Refresh View</button>
             </div>
@@ -1221,6 +1232,32 @@ async def index() -> HTMLResponse:
             return await res.json();
         }
 
+        function formatAgeText(refreshedAt) {
+            if (!refreshedAt) {
+                return '-';
+            }
+            const refreshedMs = new Date(refreshedAt).getTime();
+            if (!Number.isFinite(refreshedMs)) {
+                return '-';
+            }
+            const ageSeconds = Math.max(0, Math.floor((Date.now() - refreshedMs) / 1000));
+            if (ageSeconds < 60) {
+                return ageSeconds + 's ago';
+            }
+            const ageMinutes = Math.floor(ageSeconds / 60);
+            if (ageMinutes < 60) {
+                return ageMinutes + 'm ago';
+            }
+            const ageHours = Math.floor(ageMinutes / 60);
+            const remMinutes = ageMinutes % 60;
+            return ageHours + 'h ' + remMinutes + 'm ago';
+        }
+
+        function updateCacheAge(refreshedAt) {
+            const ageEl = document.getElementById('cache_age');
+            ageEl.textContent = formatAgeText(refreshedAt);
+        }
+
         function formatPillValue(value) {
             return value == null ? 'n/a' : value.toFixed(2);
         }
@@ -1368,6 +1405,7 @@ async def index() -> HTMLResponse:
                 error.textContent = '';
                 try {
                     availability = await loadAvailability();
+                    updateCacheAge(availability.refreshed_at);
                     const selectedDays = syncSelectedDays();
                     if (selectedDays == null) {
                         throw new Error('Selected region has no warmed day ranges yet');
@@ -1398,6 +1436,7 @@ async def index() -> HTMLResponse:
                     renderRows(selected ? selected.slots : []);
                     status.textContent = 'Serving cached ' + selectedDays + '-day forecast data for region ' + (select.value || 'G') + '.';
                 } catch (err) {
+                    updateCacheAge(null);
                     renderChart([]);
                     updateSummary([]);
                     document.getElementById('day_tabs').innerHTML = '';
@@ -1409,6 +1448,7 @@ async def index() -> HTMLResponse:
 
             try {
                 availability = await loadAvailability();
+                updateCacheAge(availability.refreshed_at);
                 const regions = Array.isArray(availability.regions) ? availability.regions : [];
                 select.innerHTML = '';
                 regions.forEach((region) => {
