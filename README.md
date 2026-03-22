@@ -68,12 +68,16 @@ Current runtime contract for the new app container:
 GHCR image publishing:
 
 - Workflow: `.github/workflows/ghcr.yml`
-- Build source: `deploy/docker/backend.Dockerfile`
-- Registry image: `ghcr.io/<repository-owner>/agile-predict`
+- Build sources:
+	- `deploy/docker/backend.Dockerfile`
+	- `deploy/docker/public-ui.Dockerfile`
+- Registry images:
+	- `ghcr.io/<repository-owner>/agile-predict`
+	- `ghcr.io/<repository-owner>/agile-protect-public-ui`
 - Push behavior:
-	- every branch push updates `:dev`
-	- every branch push also publishes `:sha-<short-sha>`
-	- release tags like `v2.3.0` also publish versioned tags and `major.minor`
+	- every push publishes `:sha-<short-sha>`
+	- every push to `main` publishes `:latest`
+	- release tags like `v2.3.0` also publish `:v2.3.0` and `:2.3`
 
 Deployment expectation:
 
