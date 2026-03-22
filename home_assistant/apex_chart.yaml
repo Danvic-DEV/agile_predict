@@ -1,3 +1,24 @@
+# Agile Predict - Home Assistant ApexCharts Card Configuration
+#
+# This card displays:
+# - Actual Octopus Agile prices (current and next day) in yellow columns
+# - Predicted Agile prices from Agile Predict in red line
+# - Predicted min/max range as shaded area (optional)
+#
+# Prerequisites:
+# 1. Install ApexCharts card via HACS: https://github.com/RomRider/apexcharts-card
+# 2. Configure the Agile Predict sensor (see sensor.yaml)
+# 3. Have Octopus Energy integration installed and configured
+# 4. Replace "19m*******_************" with your Octopus meter MPAN/serial numbers
+#
+# Installation:
+# 1. Go to Home Assistant Dashboard
+# 2. Edit Dashboard → Add Card → Manual Card
+# 3. Paste this YAML configuration
+# 4. Update entity IDs to match your Octopus Energy meter
+#
+# For more information: https://agilepredict.danvic.dev/
+
 type: custom:apexcharts-card
 apex_config: null
 header:
@@ -15,12 +36,15 @@ stacked: false
 span:
   start: day
 series:
+  # Current rate indicator (not shown in chart, only in header)
   - entity: sensor.octopus_energy_electricity_19m*******_************_current_rate
     name: Actual Agile Import (current rate)
     transform: return x * 100;
     show:
       in_chart: false
     unit: p/kWh
+  
+  # Actual prices - current day (yellow columns)
   - entity: >-
       event.octopus_energy_electricity_19m*******_************_current_day_rates
     yaxis_id: price
@@ -40,6 +64,8 @@ series:
       in_header: false
       legend_value: false
       offset_in_name: false
+  
+  # Actual prices - next day (yellow columns)
   - entity: event.octopus_energy_electricity_19m*******_************_next_day_rates
     yaxis_id: price
     name: Actual Agile Import (next day)
@@ -57,6 +83,28 @@ series:
       in_header: false
       legend_value: false
       offset_in_name: false
+  
+  # Predicted min-max range (optional - shaded area)
+  - entity: sensor.agile_predict
+    yaxis_id: price
+    name: Predicted Range (min-max)
+    color: red
+    opacity: 0.15
+    type: area
+    curve: smooth
+    extend_to: now
+    unit: p/kWh
+    data_generator: |
+      return entity.attributes.prices.map((entry) => {
+         return [new Date(entry.date_time), entry.agile_low, entry.agile_high];
+       });     
+    offset: '-15min'
+    show:
+      in_header: false
+      legend_value: false
+      offset_in_name: false
+  
+  # Predicted prices (red line)
   - entity: sensor.agile_predict
     yaxis_id: price
     name: Predicted Agile
@@ -74,3 +122,4 @@ series:
       in_header: false
       legend_value: false
       offset_in_name: false
+

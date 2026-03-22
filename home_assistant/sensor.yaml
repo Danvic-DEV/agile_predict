@@ -1,11 +1,25 @@
+# Agile Predict - Home Assistant REST Sensor Configuration
+# 
+# This sensor fetches electricity price predictions from Agile Predict's public API.
+# The predictions are ML-based forecasts for Octopus Agile tariff prices.
+#
+# Installation:
+# 1. Copy this configuration to your Home Assistant configuration.yaml or sensors.yaml
+# 2. Replace "G" in the resource URL with your region code (X, A, B, C, D, E, F, G, H, J, K, L, M, N, or P)
+# 3. Optionally adjust the scan_interval (default: 1800 seconds = 30 minutes)
+# 4. Restart Home Assistant
+#
+# For more information: https://agilepredict.danvic.dev/
+
 sensor:
   - platform: rest
-    resource: https://prices.fly.dev/api/G
-    scan_interval: 3600
+    resource: https://agilepredict.danvic.dev/api/v1/forecasts/prices?region=G&days=7&forecast_count=1&high_low=true
+    scan_interval: 1800  # Update every 30 minutes
     name: Agile Predict
-    value_template: "{{ value_json[0]['name']}}"
+    value_template: "{{ value_json[0]['name'] }}"
     json_attributes_path: "$[0]"
     json_attributes:
       - "created_at"
       - "prices"
+
 
