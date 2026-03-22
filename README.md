@@ -27,10 +27,13 @@ The project currently supports two containerized runtime surfaces:
 2. Public UI container
 
 - Image: `ghcr.io/<repository-owner>/agile-protect-public-ui`
-- Role: customer-facing web surface
+- Role: customer-facing public app with its own webpage and cached APIs
 - Port: `8001`
 - Stateless (no persistent volumes)
-- Current scope: static customer-facing UI shell with `/api/*` reverse-proxy
+- No database connection
+- Cache warm on startup (fails closed if warm fails)
+- Hourly in-memory refresh from internal app APIs
+- Serves responses from its own cache, not pass-through proxy
 - Requires `UPSTREAM_BASE_URL` environment variable at startup (for example `http://agile-predict-main:8000`)
 
 ---
@@ -98,6 +101,13 @@ Requirements:
 - provide `UPSTREAM_BASE_URL` pointing to the internal app
 - if `UPSTREAM_BASE_URL` uses container DNS (for example `agile-predict-main`), both containers must share a user-defined Docker network
 
+Optional public app env vars:
+
+- `CACHE_REFRESH_SECONDS` (default `3600`)
+- `CACHE_REQUEST_TIMEOUT_SECONDS` (default `20`)
+- `PUBLIC_RATE_LIMIT_PER_MINUTE` (default `120`)
+- `PUBLIC_BASE_URL` (default `http://localhost:8001`) used in the public page's API examples
+
 Example:
 
 ```bash
@@ -106,6 +116,9 @@ docker run -d \
   --network agile-net \
   -p 8001:8001 \
   -e UPSTREAM_BASE_URL=http://agile-predict-main:8000 \
+  -e PUBLIC_BASE_URL=https://public.example.com \
+  -e CACHE_REFRESH_SECONDS=3600 \
+  -e PUBLIC_RATE_LIMIT_PER_MINUTE=120 \
   ghcr.io/<repository-owner>/agile-protect-public-ui:sha-<short-sha>
 ```
 
@@ -116,6 +129,7 @@ docker run -d \
   --name agile-protect-public-ui \
   -p 8001:8001 \
   -e UPSTREAM_BASE_URL=http://host.docker.internal:8000 \
+  -e PUBLIC_BASE_URL=https://public.example.com \
   ghcr.io/<repository-owner>/agile-protect-public-ui:sha-<short-sha>
 ```
 

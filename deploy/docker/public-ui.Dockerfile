@@ -1,12 +1,18 @@
-FROM node:22-alpine AS frontend-build
-WORKDIR /app
-COPY frontend/package.json frontend/package-lock.json* ./
-RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
-COPY frontend /app
-RUN npm run build
+FROM python:3.12-slim
 
-FROM nginx:1.27-alpine
-COPY deploy/docker/public-ui.nginx.conf /etc/nginx/templates/default.conf.template
-COPY --from=frontend-build /app/dist /usr/share/nginx/html
+WORKDIR /app
+
+COPY backend/requirements.txt /tmp/requirements.txt
+RUN pip install --upgrade pip && pip install -r /tmp/requirements.txt
+
+COPY backend /app/backend
+COPY assets /app/assets
+
+WORKDIR /app/backend
+
 EXPOSE 8001
-CMD ["nginx", "-g", "daemon off;"]
+
+ENV PUBLIC_UI_HOST=0.0.0.0
+ENV PUBLIC_UI_PORT=8001
+
+CMD ["uvicorn", "src.public_ui.main:app", "--host", "0.0.0.0", "--port", "8001"]

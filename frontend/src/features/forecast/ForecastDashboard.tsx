@@ -164,49 +164,52 @@ function formatLondonDayLabel(dateTime: string): string {
   }).format(new Date(dateTime));
 }
 
-function getActualCellClass(slot: AgilePricePoint): string {
+function getActualInRange(slot: AgilePricePoint): boolean | null {
   if (slot.agile_actual == null || slot.agile_low == null || slot.agile_high == null) {
-    return "slot-actual-na";
+    return null;
   }
   if (slot.agile_actual >= slot.agile_low && slot.agile_actual <= slot.agile_high) {
-    return "slot-actual-in";
+    return true;
   }
-  return "slot-actual-out";
+  return false;
 }
 
-function getDeltaClass(slot: AgilePricePoint): string {
-  if (slot.agile_actual == null) {
-    return "slot-delta-na";
+function getValuePillClass(value: number | null | undefined): string {
+  if (value == null) {
+    return "value-pill value-pill-na";
   }
-  const delta = slot.agile_actual - slot.agile_pred;
-  if (delta > 0) {
-    return "slot-delta-positive";
-  }
-  if (delta < 0) {
-    return "slot-delta-negative";
-  }
-  return "slot-delta-zero";
-}
-
-function getPredPillClass(value: number): string {
   if (value < 0) {
-    return "pred-pill-blue";
+    return "value-pill value-pill-blue";
   }
   if (value < 20) {
-    return "pred-pill-green";
+    return "value-pill value-pill-green";
   }
   if (value < 30) {
-    return "pred-pill-orange";
+    return "value-pill value-pill-orange";
   }
-  return "pred-pill-red";
+  return "value-pill value-pill-red";
 }
 
-function formatDelta(slot: AgilePricePoint): string {
+function formatPillValue(value: number | null | undefined): string {
+  return value == null ? "n/a" : value.toFixed(2);
+}
+
+function getDeltaPill(slot: AgilePricePoint): { className: string; text: string } {
   if (slot.agile_actual == null) {
-    return "n/a";
+    return { className: "delta-pill delta-pill-na", text: "n/a" };
   }
   const delta = slot.agile_actual - slot.agile_pred;
-  return `${delta >= 0 ? "+" : ""}${delta.toFixed(2)}`;
+  const inRange = getActualInRange(slot);
+  if (inRange == null) {
+    return {
+      className: "delta-pill delta-pill-na",
+      text: `${delta >= 0 ? "+" : ""}${delta.toFixed(2)}`,
+    };
+  }
+  return {
+    className: inRange ? "delta-pill delta-pill-in" : "delta-pill delta-pill-out",
+    text: `${delta >= 0 ? "+" : ""}${delta.toFixed(2)}`,
+  };
 }
 
 export function ForecastDashboard() {
@@ -522,22 +525,30 @@ export function ForecastDashboard() {
                       </tr>
                     </thead>
                     <tbody>
-                      {selectedDayGroup.slots.map((slot) => (
-                        <tr key={slot.date_time}>
-                          <td>{formatSlotLabel(slot.date_time)}</td>
-                          <td>
-                            <span className={`pred-pill ${getPredPillClass(slot.agile_pred)}`}>
-                              {slot.agile_pred.toFixed(2)}
-                            </span>
-                          </td>
-                          <td>{slot.agile_low?.toFixed(2) ?? "n/a"}</td>
-                          <td>{slot.agile_high?.toFixed(2) ?? "n/a"}</td>
-                          <td className={`slot-actual ${getActualCellClass(slot)}`}>
-                            {slot.agile_actual?.toFixed(2) ?? "n/a"}
-                          </td>
-                          <td className={`slot-delta ${getDeltaClass(slot)}`}>{formatDelta(slot)}</td>
-                        </tr>
-                      ))}
+                      {selectedDayGroup.slots.map((slot) => {
+                        const deltaPill = getDeltaPill(slot);
+
+                        return (
+                          <tr key={slot.date_time}>
+                            <td>{formatSlotLabel(slot.date_time)}</td>
+                            <td>
+                              <span className={getValuePillClass(slot.agile_pred)}>{formatPillValue(slot.agile_pred)}</span>
+                            </td>
+                            <td>
+                              <span className={getValuePillClass(slot.agile_low)}>{formatPillValue(slot.agile_low)}</span>
+                            </td>
+                            <td>
+                              <span className={getValuePillClass(slot.agile_high)}>{formatPillValue(slot.agile_high)}</span>
+                            </td>
+                            <td>
+                              <span className={getValuePillClass(slot.agile_actual)}>{formatPillValue(slot.agile_actual)}</span>
+                            </td>
+                            <td>
+                              <span className={deltaPill.className}>{deltaPill.text}</span>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 ) : (
