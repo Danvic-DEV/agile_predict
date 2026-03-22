@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { fetchForecastPrices, fetchForecasts, fetchRegions } from "./api";
+import { fetchDiagnosticsSummary, fetchForecastPrices, fetchForecasts, fetchRegions } from "./api";
 import { ApiError } from "../../lib/api/client";
 import type { AgilePricePoint, ForecastSummary, ForecastWithPrices } from "../../lib/api/types";
 
@@ -224,6 +224,7 @@ export function ForecastDashboard() {
   const [customerForecastStatus, setCustomerForecastStatus] = useState<CustomerForecastStatus>("available");
   const [refreshToken, setRefreshToken] = useState(0);
   const [selectedDayKey, setSelectedDayKey] = useState<string>("");
+  const [trainingDays, setTrainingDays] = useState<number | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -231,10 +232,11 @@ export function ForecastDashboard() {
     async function load() {
       setState("loading");
       try {
-        const [f, p, r] = await Promise.all([
+        const [f, p, r, diag] = await Promise.all([
           fetchForecasts(5),
           fetchForecastPrices(selectedRegion, days, forecastCount),
           fetchRegions(),
+          fetchDiagnosticsSummary().catch(() => null),
         ]);
         if (!active) {
           return;
@@ -244,6 +246,9 @@ export function ForecastDashboard() {
         setRegions(r);
         if (!r.includes(selectedRegion)) {
           setSelectedRegion(r[0] ?? "B");
+        }
+        if (diag?.update_ml_training_rows) {
+          setTrainingDays(Math.round(diag.update_ml_training_rows / 48));
         }
         setCustomerForecastStatus("available");
         setState("loaded");
@@ -423,6 +428,12 @@ export function ForecastDashboard() {
                   <span className="label">Region</span>
                   <strong>{selectedRegion}</strong>
                 </div>
+                {trainingDays !== null && (
+                  <div style={{ opacity: 0.7, fontStyle: "italic" }}>
+                    <span className="label">Training Data</span>
+                    <strong>{trainingDays} {trainingDays === 1 ? "day" : "days"}</strong>
+                  </div>
+                )}
               </div>
               <div className="chart-card">
                 <div className="chart-header">

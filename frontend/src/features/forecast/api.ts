@@ -1,8 +1,12 @@
 import { getJson } from "../../lib/api/client";
-import type { ForecastSummary, ForecastWithPrices } from "../../lib/api/types";
+import type { ForecastSummary, ForecastWithPrices, LatestDiagnosticsSummary } from "../../lib/api/types";
 
 export function fetchForecasts(limit = 5): Promise<ForecastSummary[]> {
   return getJson<ForecastSummary[]>(`/forecasts?limit=${limit}`);
+}
+
+export function fetchDiagnosticsSummary(): Promise<LatestDiagnosticsSummary> {
+  return getJson<LatestDiagnosticsSummary>("/diagnostics/latest-summary");
 }
 
 export function fetchForecastPrices(region = "G", days = 7, forecastCount = 1): Promise<ForecastWithPrices[]> {
