@@ -26,6 +26,11 @@ jobs:
         id: meta
         run: |
           REF_NAME=${GITHUB_REF_NAME}
+          if [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
+            echo "is_main=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_main=false" >> "$GITHUB_OUTPUT"
+          fi
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
             TAG=${REF_NAME}
             MAJOR_MINOR=$(echo "$TAG" | sed -E 's/^v([0-9]+\.[0-9]+)\..*/\1/')
@@ -40,12 +45,17 @@ jobs:
           OWNER_LC=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           IMAGE=ghcr.io/${OWNER_LC}/agile-predict
           SHORT_SHA=${GITHUB_SHA::7}
-          docker build -f deploy/docker/backend.Dockerfile -t $IMAGE:dev -t $IMAGE:sha-${SHORT_SHA} .
-          docker push $IMAGE:dev
+          docker build -f deploy/docker/backend.Dockerfile -t $IMAGE:sha-${SHORT_SHA} .
           docker push $IMAGE:sha-${SHORT_SHA}
+          if [[ "${{ steps.meta.outputs.is_main }}" == "true" ]]; then
+            docker tag $IMAGE:sha-${SHORT_SHA} $IMAGE:latest
+            docker push $IMAGE:latest
+          fi
           if [[ "${{ steps.meta.outputs.is_release }}" == "true" ]]; then
-            docker tag $IMAGE:dev $IMAGE:${{ steps.meta.outputs.tag }}
-            docker tag $IMAGE:dev $IMAGE:${{ steps.meta.outputs.major_minor }}
+            docker tag $IMAGE:sha-${SHORT_SHA} $IMAGE:${{ steps.meta.outputs.tag }}
+            docker tag $IMAGE:sha-${SHORT_SHA} $IMAGE:${{ steps.meta.outputs.major_minor }}
+            docker tag $IMAGE:sha-${SHORT_SHA} $IMAGE:latest
             docker push $IMAGE:${{ steps.meta.outputs.tag }}
             docker push $IMAGE:${{ steps.meta.outputs.major_minor }}
+            docker push $IMAGE:latest
           fi
