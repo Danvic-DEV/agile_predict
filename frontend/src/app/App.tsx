@@ -30,7 +30,6 @@ function HomePage() {
         </button>
       </div>
 
-      {/* Page Content */}
       {activePageTab === "forecast" && <ForecastDashboard />}
       {activePageTab === "diagnostics" && <DiagnosticsPanel />}
     </>

@@ -188,6 +188,19 @@ function getDeltaClass(slot: AgilePricePoint): string {
   return "slot-delta-zero";
 }
 
+function getPredPillClass(value: number): string {
+  if (value < 0) {
+    return "pred-pill-blue";
+  }
+  if (value < 20) {
+    return "pred-pill-green";
+  }
+  if (value < 30) {
+    return "pred-pill-orange";
+  }
+  return "pred-pill-red";
+}
+
 function formatDelta(slot: AgilePricePoint): string {
   if (slot.agile_actual == null) {
     return "n/a";
@@ -512,7 +525,11 @@ export function ForecastDashboard() {
                       {selectedDayGroup.slots.map((slot) => (
                         <tr key={slot.date_time}>
                           <td>{formatSlotLabel(slot.date_time)}</td>
-                          <td>{slot.agile_pred.toFixed(2)}</td>
+                          <td>
+                            <span className={`pred-pill ${getPredPillClass(slot.agile_pred)}`}>
+                              {slot.agile_pred.toFixed(2)}
+                            </span>
+                          </td>
                           <td>{slot.agile_low?.toFixed(2) ?? "n/a"}</td>
                           <td>{slot.agile_high?.toFixed(2) ?? "n/a"}</td>
                           <td className={`slot-actual ${getActualCellClass(slot)}`}>

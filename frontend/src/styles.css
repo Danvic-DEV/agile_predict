@@ -688,6 +688,40 @@ body {
   border-bottom: 0;
 }
 
+.pred-pill {
+  display: inline-block;
+  min-width: 62px;
+  text-align: center;
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.pred-pill-blue {
+  color: #cde7ff;
+  background: rgba(34, 111, 204, 0.35);
+  border: 1px solid rgba(98, 164, 245, 0.55);
+}
+
+.pred-pill-green {
+  color: #d2f7de;
+  background: rgba(30, 130, 72, 0.32);
+  border: 1px solid rgba(97, 191, 133, 0.52);
+}
+
+.pred-pill-orange {
+  color: #ffe7cc;
+  background: rgba(182, 104, 21, 0.34);
+  border: 1px solid rgba(241, 157, 69, 0.56);
+}
+
+.pred-pill-red {
+  color: #ffd6d6;
+  background: rgba(171, 43, 43, 0.35);
+  border: 1px solid rgba(230, 108, 108, 0.6);
+}
+
 .slot-actual {
   font-weight: 700;
 }
