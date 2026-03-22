@@ -110,6 +110,7 @@ class PublicCache:
                     region: {days: list(payload) for days, payload in by_days.items()}
                     for region, by_days in self._snapshot.prices_by_region_and_days.items()
                 },
+                training_days=self._snapshot.training_days,
                 refreshed_at=self._snapshot.refreshed_at,
                 last_error=self._snapshot.last_error,
             )
@@ -397,6 +398,7 @@ async def public_forecast_availability():
             for region, by_days in snapshot.prices_by_region_and_days.items()
         },
         "refreshed_at": snapshot.refreshed_at,
+        "training_days": snapshot.training_days,
         "default_days": DEFAULT_DAYS,
         "min_days": MIN_DAYS,
         "max_days": MAX_DAYS,
@@ -863,6 +865,10 @@ async def index() -> HTMLResponse:
                 <label>
                     Data Age
                     <span id=\"cache_age\" class=\"control-note\">-</span>
+                </label>
+                <label id=\"training_container\" style=\"display: none; opacity: 0.7; font-style: italic;\">
+                    Training Data
+                    <span id=\"training\" class=\"control-note\">-</span>
                 </label>
                 <button id=\"refresh\" type=\"button\">Refresh View</button>
             </div>
@@ -1366,6 +1372,9 @@ async def index() -> HTMLResponse:
         function updateTrainingData(trainingDays) {
             const trainingEl = document.getElementById('training');
             const trainingContainer = document.getElementById('training_container');
+            if (!trainingEl || !trainingContainer) {
+                return;
+            }
             if (trainingDays != null && trainingDays > 0) {
                 trainingContainer.style.display = '';
                 const days = Number(trainingDays);
