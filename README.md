@@ -1,124 +1,192 @@
-# Agile Predict v2.2.2
+# Agile Predict
 
-This model forecasts Octopus Agile electricity prices up to 14 days in advance using a Machine Learning model trained
-on data from the Balancing Mechanism Reporting System (<a href="https://bmrs.elexon.co.uk/">BRMS</a>), National Grid
-Electricity Supply Operator (<a href="https://www.nationalgrideso.com/data-portal">NG ESO</a>) and weather data from
-<a href="https://open-meteo.com"> open-meteo.com</a>.<p>
+Agile Predict forecasts Octopus Agile electricity prices using a pipeline that combines market, grid, and weather data.
+
+## Source lineage
+
+This repository is derived from the original source project:
+
+- https://github.com/fboundy/agile_predict
+
+That upstream repository should be referenced when tracing the original implementation history and project roots.
 
 ---
 
-## Developing for this project
+## Current architecture
 
-This project runs as a FastAPI + React stack in a single container.
+The project currently supports two containerized runtime surfaces:
 
-### Create a virtual environment
+1. Internal application container
 
-As with all python projects, it is recommended to create a virtual environment. For example, in this project, create a virtual environment using python's built in virtual environment tool `venv` to create an virtual environment in a folder `.venv`:
+- Image: `ghcr.io/<repository-owner>/agile-predict`
+- Role: full FastAPI application + embedded Postgres runtime
+- Port: `8000`
+- Includes internal/admin/diagnostics routes
+- Requires persistent `/config` mount
 
+2. Public UI container
+
+- Image: `ghcr.io/<repository-owner>/agile-protect-public-ui`
+- Role: customer-facing web surface
+- Port: `8001`
+- Stateless (no persistent volumes)
+- Current scope: static frontend shell on nginx
+
+---
+
+## GHCR publishing
+
+Workflow:
+
+- `.github/workflows/ghcr.yml`
+
+Build sources:
+
+- `deploy/docker/backend.Dockerfile`
+- `deploy/docker/public-ui.Dockerfile`
+
+Published images:
+
+- `ghcr.io/<repository-owner>/agile-predict`
+- `ghcr.io/<repository-owner>/agile-protect-public-ui`
+
+Tag behavior for both images:
+
+- every push: `sha-<short-sha>`
+- push to `main`: `latest`
+- release tags like `v2.3.0`: `v2.3.0` and `2.3` (and `latest`)
+
+---
+
+## Deployment runbook (both images)
+
+Use immutable `sha-...` tags for production deployments when possible.
+
+### 1) Deploy internal app container
+
+Requirements:
+
+- keep `8000` private/internal where possible
+- mount persistent config directory to `/config`
+
+Example:
+
+```bash
+docker run -d \
+  --name agile-predict-main \
+  -p 8000:8000 \
+  -v /path/to/runtime-config:/config \
+  ghcr.io/<repository-owner>/agile-predict:sha-<short-sha>
 ```
+
+Health check:
+
+```bash
+curl http://<internal-host>:8000/api/v1/health
+```
+
+### 2) Deploy public UI container
+
+Requirements:
+
+- expose `8001` publicly
+- no persistent volume required
+
+Example:
+
+```bash
+docker run -d \
+  --name agile-protect-public-ui \
+  -p 8001:8001 \
+  ghcr.io/<repository-owner>/agile-protect-public-ui:sha-<short-sha>
+```
+
+Health check:
+
+```bash
+curl http://<public-host>:8001/healthz
+```
+
+### 3) Rollout order
+
+1. Pull both target images first.
+2. Update `agile-predict` and verify `8000` health.
+3. Update `agile-protect-public-ui` and verify `8001` health.
+4. Keep previous image tags available for rollback.
+
+---
+
+## Security baseline
+
+- Do not expose internal diagnostics/admin APIs publicly.
+- Prefer private networking for `8000` and public exposure only for `8001`.
+- Use least-privilege registry credentials (`read:packages`) on deployment hosts.
+
+---
+
+## Local development
+
+### Python environment
+
+```bash
 cd agile_predict
 python3 -m venv .venv
 ```
 
-Then, each time you are developing, activate the virtual environment according to the OS you are using.
+Windows activation:
 
-Windows:
-
-```
+```bash
 ./.venv/Scripts/activate
 ```
 
-### Installing dependencies
+Install dependencies:
 
-Requirements are listed in `requirements.txt`. You may install these however you like. The usual way is via python pip:
-
-```
+```bash
 pip install -r requirements.txt
 ```
 
-### Running the project
-
-Use the local stack helper:
+### Start local stack
 
 ```bash
 ./bin/start_local_stack.sh
 ```
 
-Or run the FastAPI app directly from `backend/` with your preferred tooling.
+This starts the internal app container, initializes embedded Postgres, and auto-seeds on first run.
 
----
-
-## Migration Scaffolding (Standard Stack)
-
-Migration scaffolding has been added on the dedicated migration branch for:
-
-- FastAPI backend under `backend/`
-- React + Vite frontend under `frontend/`
-- Single-container packaging under `deploy/` and `.github/workflows/`
-
-Container publishing for the migration stack is handled through GitHub Container Registry (GHCR), not Fly.io or host-level shell deploys.
-
-Current runtime contract for the new app container:
-
-- Persistent configuration directory mounted at `/config`
-- First run creates `/config/.env` from `deploy/docker/default.env`
-- Embedded Postgres data persists under `/config/postgresql`
-- FastAPI serves both the API and the built React frontend
-
-GHCR image publishing:
-
-- Workflow: `.github/workflows/ghcr.yml`
-- Build sources:
-	- `deploy/docker/backend.Dockerfile`
-	- `deploy/docker/public-ui.Dockerfile`
-- Registry images:
-	- `ghcr.io/<repository-owner>/agile-predict`
-	- `ghcr.io/<repository-owner>/agile-protect-public-ui`
-- Push behavior:
-	- every push publishes `:sha-<short-sha>`
-	- every push to `main` publishes `:latest`
-	- release tags like `v2.3.0` also publish `:v2.3.0` and `:2.3`
-
-Deployment expectation:
-
-- production or staging should pull and run the published GHCR image
-- repo helper scripts under `bin/` are local or operational helpers, not the deployment mechanism
-- if you are rolling out a UI or API change, the change is live only after the target runtime pulls the new GHCR image
-
-Preferred local stack startup:
+### Build public UI image locally
 
 ```bash
-./bin/start_local_stack.sh
+docker build -f deploy/docker/public-ui.Dockerfile -t agile-protect-public-ui:local .
 ```
 
-This starts the single app container, initializes embedded Postgres, and auto-seeds the migration database on first run.
-
-Containerized backend tests:
+### Backend tests
 
 ```bash
 ./bin/test_backend.sh
 ```
 
-This is the default migration-stack test path and avoids host Python environment drift.
+---
 
-Containerized parity gate:
+## Parity tooling
+
+Run parity gate:
 
 ```bash
 LEGACY_BASE=http://localhost:8000 MIGRATED_BASE=http://localhost:8010 ./bin/parity_gate.sh
 ```
 
-Each run updates `shared/parity/last-report.json` and writes a timestamped archive in `shared/parity/history/`.
+Parity report outputs:
 
-Parity history can be queried from the migration API with optional filters, for example:
+- latest: `shared/parity/last-report.json`
+- history: `shared/parity/history/`
+
+Parity history API examples:
 
 ```bash
 curl "http://localhost:8000/api/v1/diagnostics/parity-history?limit=5&status=fail"
-```
-
-Pagination is supported with `offset`, for example:
-
-```bash
 curl "http://localhost:8000/api/v1/diagnostics/parity-history?limit=5&offset=5"
 ```
 
-See `docs/implementation-roadmap.md` for startup examples.
+Additional implementation context:
+
+- `docs/implementation-roadmap.md`
