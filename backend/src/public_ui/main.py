@@ -851,6 +851,7 @@ async def index() -> HTMLResponse:
                 <h1>Agile Predict</h1>
             </div>
             <p>Estimate upcoming Octopus Agile electricity prices so you can plan when to use power at lower-cost periods. These values are model predictions from recent data, not guaranteed tariff prices, and should be used as guidance only.</p>
+            <p style=\"margin-top: 0.75rem; opacity: 0.85; font-size: 0.9rem;\">Prediction accuracy improves as the model accumulates more training data. Significant improvements are typically seen at 1 month (~1,400 training samples), 6 months (~8,600 samples), and continue steadily over the first 2 years of operation.</p>
         </header>
         <section class=\"card\">
             <div class=\"controls-row\">
