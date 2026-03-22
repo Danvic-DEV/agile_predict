@@ -6,7 +6,7 @@ COPY frontend /app
 RUN npm run build
 
 FROM nginx:1.27-alpine
-COPY deploy/docker/public-ui.nginx.conf /etc/nginx/conf.d/default.conf
+COPY deploy/docker/public-ui.nginx.conf /etc/nginx/templates/default.conf.template
 COPY --from=frontend-build /app/dist /usr/share/nginx/html
 EXPOSE 8001
 CMD ["nginx", "-g", "daemon off;"]

@@ -30,7 +30,8 @@ The project currently supports two containerized runtime surfaces:
 - Role: customer-facing web surface
 - Port: `8001`
 - Stateless (no persistent volumes)
-- Current scope: static frontend shell on nginx
+- Current scope: static customer-facing UI shell with `/api/*` reverse-proxy
+- Requires `UPSTREAM_BASE_URL` environment variable at startup (for example `http://agile-predict-main:8000`)
 
 ---
 
@@ -72,8 +73,11 @@ Requirements:
 Example:
 
 ```bash
+docker network create agile-net
+
 docker run -d \
   --name agile-predict-main \
+  --network agile-net \
   -p 8000:8000 \
   -v /path/to/runtime-config:/config \
   ghcr.io/<repository-owner>/agile-predict:sha-<short-sha>
@@ -91,13 +95,27 @@ Requirements:
 
 - expose `8001` publicly
 - no persistent volume required
+- provide `UPSTREAM_BASE_URL` pointing to the internal app
+- if `UPSTREAM_BASE_URL` uses container DNS (for example `agile-predict-main`), both containers must share a user-defined Docker network
 
 Example:
 
 ```bash
 docker run -d \
   --name agile-protect-public-ui \
+  --network agile-net \
   -p 8001:8001 \
+  -e UPSTREAM_BASE_URL=http://agile-predict-main:8000 \
+  ghcr.io/<repository-owner>/agile-protect-public-ui:sha-<short-sha>
+```
+
+Alternative when targeting host-published internal app:
+
+```bash
+docker run -d \
+  --name agile-protect-public-ui \
+  -p 8001:8001 \
+  -e UPSTREAM_BASE_URL=http://host.docker.internal:8000 \
   ghcr.io/<repository-owner>/agile-protect-public-ui:sha-<short-sha>
 ```
 
