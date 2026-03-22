@@ -11,6 +11,7 @@ import {
   fetchParityHistory,
   fetchLatestParitySummary,
   fetchMlParityScorecard,
+  refreshFeedSource,
   runBootstrapForecastBundle,
   runUpdateForecastJob,
   sendDiscordTest,
@@ -242,6 +243,7 @@ export function DiagnosticsPanel() {
   const [loadingGpu, setLoadingGpu] = useState(true);
   const [loadingMlWriteMode, setLoadingMlWriteMode] = useState(true);
   const [loadingFeedHealth, setLoadingFeedHealth] = useState(true);
+  const [refreshingFeeds, setRefreshingFeeds] = useState<Record<string, boolean>>({});
   const [loadingDiscord, setLoadingDiscord] = useState(true);
   const [diagnosticsLoadedAt, setDiagnosticsLoadedAt] = useState<string | null>(null);
   const [parityLoadedAt, setParityLoadedAt] = useState<string | null>(null);
@@ -836,6 +838,20 @@ export function DiagnosticsPanel() {
       setActionMessage(err instanceof Error ? err.message : "Failed sending Discord test notification");
     } finally {
       setDiscordTestState("idle");
+    }
+  }
+
+  async function handleRefreshFeedSource(sourceId: string, sourceName: string) {
+    setRefreshingFeeds((current) => ({ ...current, [sourceId]: true }));
+    setActionMessage(`Refreshing ${sourceName}...`);
+    try {
+      const result = await refreshFeedSource(sourceId);
+      await refreshFeedHealth();
+      setActionMessage(`${result.detail} (${result.records_received} records received)`);
+    } catch (err) {
+      setActionMessage(err instanceof Error ? err.message : `Failed refreshing ${sourceName}`);
+    } finally {
+      setRefreshingFeeds((current) => ({ ...current, [sourceId]: false }));
     }
   }
 
@@ -1829,6 +1845,17 @@ export function DiagnosticsPanel() {
                                 Quality: {entry.validation_issues.slice(0, 2).join(", ")}
                               </span>
                             )}
+                            <span className="feed-action">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void handleRefreshFeedSource(id, entry.name ?? id);
+                                }}
+                                disabled={Boolean(refreshingFeeds[id])}
+                              >
+                                {refreshingFeeds[id] ? "Updating..." : "Update feed"}
+                              </button>
+                            </span>
                           </div>
                         </div>
                       );
@@ -1866,6 +1893,17 @@ export function DiagnosticsPanel() {
                                 Quality: {entry.validation_issues.slice(0, 2).join(", ")}
                               </span>
                             )}
+                            <span className="feed-action">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void handleRefreshFeedSource(id, entry.name ?? id);
+                                }}
+                                disabled={Boolean(refreshingFeeds[id])}
+                              >
+                                {refreshingFeeds[id] ? "Updating..." : "Update feed"}
+                              </button>
+                            </span>
                           </div>
                         </div>
                       );
@@ -1903,6 +1941,17 @@ export function DiagnosticsPanel() {
                                 Quality: {entry.validation_issues.slice(0, 2).join(", ")}
                               </span>
                             )}
+                            <span className="feed-action">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void handleRefreshFeedSource(id, entry.name ?? id);
+                                }}
+                                disabled={Boolean(refreshingFeeds[id])}
+                              >
+                                {refreshingFeeds[id] ? "Updating..." : "Update feed"}
+                              </button>
+                            </span>
                           </div>
                         </div>
                       );
@@ -1940,6 +1989,17 @@ export function DiagnosticsPanel() {
                                 Quality: {entry.validation_issues.slice(0, 2).join(", ")}
                               </span>
                             )}
+                            <span className="feed-action">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void handleRefreshFeedSource(id, entry.name ?? id);
+                                }}
+                                disabled={Boolean(refreshingFeeds[id])}
+                              >
+                                {refreshingFeeds[id] ? "Updating..." : "Update feed"}
+                              </button>
+                            </span>
                           </div>
                         </div>
                       );
@@ -1977,6 +2037,17 @@ export function DiagnosticsPanel() {
                                 Quality: {entry.validation_issues.slice(0, 2).join(", ")}
                               </span>
                             )}
+                            <span className="feed-action">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void handleRefreshFeedSource(id, entry.name ?? id);
+                                }}
+                                disabled={Boolean(refreshingFeeds[id])}
+                              >
+                                {refreshingFeeds[id] ? "Updating..." : "Update feed"}
+                              </button>
+                            </span>
                           </div>
                         </div>
                       );

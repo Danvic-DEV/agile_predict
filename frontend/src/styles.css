@@ -1150,6 +1150,16 @@ body {
   color: #f2d597;
 }
 
+.feed-action {
+  margin-left: auto;
+}
+
+.feed-action button {
+  font-size: 0.78rem;
+  padding: 5px 10px;
+  border-radius: 6px;
+}
+
 .feed-error {
   color: #ffb0b0;
   font-style: italic;

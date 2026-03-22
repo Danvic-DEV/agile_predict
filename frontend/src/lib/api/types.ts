@@ -82,6 +82,13 @@ export interface RunUpdateJobResponse {
   day_ahead_points?: number | null;
 }
 
+export interface RefreshFeedResponse {
+  source_id: string;
+  records_received: number;
+  refreshed_at: string;
+  detail: string;
+}
+
 export interface LatestParitySummary {
   report_available: boolean;
   all_passed: boolean | null;

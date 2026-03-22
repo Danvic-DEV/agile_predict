@@ -12,6 +12,7 @@ import type {
   MlParityScorecard,
   PipelineTruthAudit,
   ParityHistoryResponse,
+  RefreshFeedResponse,
   LatestParitySummary,
   RunUpdateJobResponse,
 } from "../../lib/api/types";
@@ -104,4 +105,11 @@ export function runBootstrapForecastBundle(
 
 export function runUpdateForecastJob(): Promise<RunUpdateJobResponse> {
   return postJson<RunUpdateJobResponse, Record<string, never>>("/admin-jobs/run-update-forecast-job", {});
+}
+
+export function refreshFeedSource(sourceId: string): Promise<RefreshFeedResponse> {
+  return postJson<RefreshFeedResponse, Record<string, never>>(
+    `/admin-jobs/refresh-feed/${encodeURIComponent(sourceId)}`,
+    {}
+  );
 }

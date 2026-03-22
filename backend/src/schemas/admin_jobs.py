@@ -57,3 +57,10 @@ class RunUpdateJobResponse(BaseModel):
     records_written: int
     source: str | None = None
     day_ahead_points: int | None = None
+
+
+class RefreshFeedResponse(BaseModel):
+    source_id: str
+    records_received: int
+    refreshed_at: datetime
+    detail: str

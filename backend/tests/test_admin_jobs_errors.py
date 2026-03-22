@@ -75,3 +75,31 @@ def test_bootstrap_forecast_error_contract(monkeypatch) -> None:
     assert detail["message"] == "Bootstrap forecast failed."
     assert detail["error_type"] == "ValueError"
     assert "Unsupported region" in detail["error"]
+
+
+def test_refresh_feed_invalid_source_error_contract(monkeypatch) -> None:
+    client = _client_without_runtime(monkeypatch)
+
+    response = client.post("/api/v1/admin-jobs/refresh-feed/not_a_real_feed")
+
+    assert response.status_code == 400
+    detail = response.json()["detail"]
+    assert detail["code"] == "invalid_feed_source"
+    assert detail["message"] == "Feed refresh failed."
+    assert detail["error_type"] == "ValueError"
+    assert "Unsupported feed source" in detail["error"]
+
+
+def test_refresh_feed_success_contract(monkeypatch) -> None:
+    client = _client_without_runtime(monkeypatch)
+
+    monkeypatch.setattr(admin_jobs, "_refresh_feed_source", lambda _source_id: 24)
+
+    response = client.post("/api/v1/admin-jobs/refresh-feed/nordpool_da")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["source_id"] == "nordpool_da"
+    assert payload["records_received"] == 24
+    assert "Feed refresh completed" in payload["detail"]
+    assert payload["refreshed_at"]

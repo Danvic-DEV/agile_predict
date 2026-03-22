@@ -10,16 +10,83 @@ from src.core.discord_notifications import send_update_failure_notification, sen
 from src.core.regions import normalize_region
 from src.domain.bootstrap_bundle import BootstrapBundleConfig, write_bootstrap_bundle
 from src.jobs.pipelines.update_forecast import run_update_forecast_job
+from src.core.feed_health import FEED_SOURCES
+from src.ml.ingest import fetch_day_ahead_prices
+from src.ml.ingest.grid_weather import (
+    _fetch_elexon_ndf_forecast,
+    _fetch_neso_bm_wind,
+    _fetch_neso_demand,
+    _fetch_neso_embedded,
+    _fetch_neso_solar_wind,
+    _fetch_open_meteo,
+)
+from src.ml.ingest.octopus_agile import _resolve_agile_product_id, fetch_agile_prices_for_region
+from src.ml.ingest.system_context import fetch_fuelinst_context
 from src.repositories.types import AgileDataWrite
 from src.schemas.admin_jobs import (
     BootstrapForecastBundleRequest,
     BootstrapForecastBundleResponse,
     BootstrapForecastRequest,
     BootstrapForecastResponse,
+    RefreshFeedResponse,
     RunUpdateJobResponse,
 )
 
 router = APIRouter()
+
+
+def _refresh_feed_source(source_id: str) -> int:
+    if source_id not in FEED_SOURCES:
+        raise ValueError(f"Unsupported feed source: {source_id}")
+
+    now_utc = datetime.now(timezone.utc)
+    start_date = (now_utc - timedelta(days=3)).strftime("%Y-%m-%d")
+
+    if source_id.startswith("agile_octopus_"):
+        region = source_id.removeprefix("agile_octopus_").upper()
+        product_id = _resolve_agile_product_id()
+        prices = fetch_agile_prices_for_region(
+            region=region,
+            product_id=product_id,
+            from_date=now_utc - timedelta(days=3),
+            to_date=now_utc + timedelta(days=1),
+        )
+        return len(prices)
+
+    if source_id == "nordpool_da":
+        prices = fetch_day_ahead_prices(now=now_utc)
+        return len(prices)
+
+    if source_id == "weather_open_meteo":
+        weather = _fetch_open_meteo(
+            start_date=start_date,
+            end_date=(now_utc + timedelta(days=3)).strftime("%Y-%m-%d"),
+        )
+        return len(weather)
+
+    if source_id == "neso_demand":
+        return len(_fetch_neso_demand(start_date))
+
+    if source_id == "neso_bm_wind":
+        return len(_fetch_neso_bm_wind(start_date))
+
+    if source_id == "neso_solar_wind":
+        return len(_fetch_neso_solar_wind(start_date))
+
+    if source_id == "neso_embedded_solar_wind":
+        return len(_fetch_neso_embedded(start_date))
+
+    if source_id == "elexon_indo":
+        return len(_fetch_neso_demand(start_date))
+
+    if source_id == "elexon_ndf":
+        return len(_fetch_elexon_ndf_forecast())
+
+    if source_id == "elexon_fuelinst":
+        context = fetch_fuelinst_context(now_utc - timedelta(days=3), now_utc)
+        return len(context)
+
+    raise ValueError(f"Unsupported feed source: {source_id}")
 
 
 @router.post("/bootstrap-forecast", response_model=BootstrapForecastResponse)
@@ -144,4 +211,22 @@ def run_update_job(uow: UnitOfWorkDep) -> RunUpdateJobResponse:
         records_written=result.records_written,
         source=result.source,
         day_ahead_points=result.day_ahead_points,
+    )
+
+
+@router.post("/refresh-feed/{source_id}", response_model=RefreshFeedResponse)
+def refresh_feed(source_id: str) -> RefreshFeedResponse:
+    try:
+        records_received = _refresh_feed_source(source_id)
+    except ValueError as exc:
+        raise http_error(400, "invalid_feed_source", "Feed refresh failed.", exc) from exc
+    except Exception as exc:
+        raise http_error(400, "feed_refresh_failed", "Feed refresh failed.", exc) from exc
+
+    refreshed_at = datetime.now(timezone.utc)
+    return RefreshFeedResponse(
+        source_id=source_id,
+        records_received=records_received,
+        refreshed_at=refreshed_at,
+        detail=f"Feed refresh completed for {source_id}.",
     )
