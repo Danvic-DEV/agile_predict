@@ -133,7 +133,7 @@ class RateLimiter:
 
 cache = PublicCache()
 limiter = RateLimiter(PUBLIC_RATE_LIMIT_PER_MINUTE)
-app = FastAPI(title="agile-protect-public-ui", version="1.0.0")
+app = FastAPI(title="agile-predict-public-ui", version="1.0.0")
 PUBLIC_UI_LOGO_PATH = Path("/app/assets/public-ui-logo-128.png")
 
 FAVICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Agile Predict favicon">

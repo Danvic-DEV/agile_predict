@@ -63,7 +63,7 @@ jobs:
       - name: Build and push public UI image
         run: |
           OWNER_LC=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          IMAGE=ghcr.io/${OWNER_LC}/agile-protect-public-ui
+          IMAGE=ghcr.io/${OWNER_LC}/agile-predict-public-ui
           SHORT_SHA=${GITHUB_SHA::7}
           docker build -f deploy/docker/public-ui.Dockerfile -t $IMAGE:sha-${SHORT_SHA} .
           docker push $IMAGE:sha-${SHORT_SHA}

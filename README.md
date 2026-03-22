@@ -26,7 +26,7 @@ The project currently supports two containerized runtime surfaces:
 
 2. Public UI container
 
-- Image: `ghcr.io/<repository-owner>/agile-protect-public-ui`
+- Image: `ghcr.io/<repository-owner>/agile-predict-public-ui`
 - Role: customer-facing public app with its own webpage and cached APIs
 - Port: `8001`
 - Stateless (no persistent volumes)
@@ -52,7 +52,7 @@ Build sources:
 Published images:
 
 - `ghcr.io/<repository-owner>/agile-predict`
-- `ghcr.io/<repository-owner>/agile-protect-public-ui`
+- `ghcr.io/<repository-owner>/agile-predict-public-ui`
 
 Tag behavior for both images:
 
@@ -112,25 +112,25 @@ Example:
 
 ```bash
 docker run -d \
-  --name agile-protect-public-ui \
+  --name agile-predict-public-ui \
   --network agile-net \
   -p 8001:8001 \
   -e UPSTREAM_BASE_URL=http://agile-predict-main:8000 \
   -e PUBLIC_BASE_URL=https://public.example.com \
   -e CACHE_REFRESH_SECONDS=3600 \
   -e PUBLIC_RATE_LIMIT_PER_MINUTE=120 \
-  ghcr.io/<repository-owner>/agile-protect-public-ui:sha-<short-sha>
+  ghcr.io/<repository-owner>/agile-predict-public-ui:sha-<short-sha>
 ```
 
 Alternative when targeting host-published internal app:
 
 ```bash
 docker run -d \
-  --name agile-protect-public-ui \
+  --name agile-predict-public-ui \
   -p 8001:8001 \
   -e UPSTREAM_BASE_URL=http://host.docker.internal:8000 \
   -e PUBLIC_BASE_URL=https://public.example.com \
-  ghcr.io/<repository-owner>/agile-protect-public-ui:sha-<short-sha>
+  ghcr.io/<repository-owner>/agile-predict-public-ui:sha-<short-sha>
 ```
 
 Health check:
@@ -143,7 +143,7 @@ curl http://<public-host>:8001/healthz
 
 1. Pull both target images first.
 2. Update `agile-predict` and verify `8000` health.
-3. Update `agile-protect-public-ui` and verify `8001` health.
+3. Update `agile-predict-public-ui` and verify `8001` health.
 4. Keep previous image tags available for rollback.
 
 ---
@@ -188,7 +188,7 @@ This starts the internal app container, initializes embedded Postgres, and auto-
 ### Build public UI image locally
 
 ```bash
-docker build -f deploy/docker/public-ui.Dockerfile -t agile-protect-public-ui:local .
+docker build -f deploy/docker/public-ui.Dockerfile -t agile-predict-public-ui:local .
 ```
 
 ### Backend tests
