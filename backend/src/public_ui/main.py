@@ -1056,10 +1056,9 @@ async def index() -> HTMLResponse:
                 const pred = toNumber(point.agile_pred);
                 return pred == null ? 0 : pred;
             });
-            const actuals = points.map((point) => {
-                const actual = toNumber(point.agile_actual);
-                return actual == null ? 0 : actual;
-            });
+            const actuals = points
+                .map((point) => toNumber(point.agile_actual))
+                .filter((v) => v != null);
             const values = lows.concat(highs).concat(preds).concat(actuals);
             const minValue = Math.min(...values);
             const maxValue = Math.max(...values);
