@@ -274,7 +274,8 @@ def prune_update_job_forecasts(uow: BootstrapBundleUoW, keep_count: int = 3) -> 
     
     uow.forecast_data_writes.delete_for_forecasts(ids)
     uow.agile_data_writes.delete_for_forecasts(ids)
-    return uow.forecast_writes.delete_by_ids(ids)    return len(ids)
+    uow.forecast_writes.delete_by_ids(ids)
+    return len(ids)
 
 
 def write_history_forecast(
