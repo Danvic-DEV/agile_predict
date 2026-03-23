@@ -230,11 +230,25 @@ def run_ml_day_ahead_forecast(
     no_ranges: bool = False,
     use_gpu: bool = False,
 ) -> MlParityForecastOutput:
-    forecasts = uow.session.execute(select(ForecastORM).order_by(ForecastORM.created_at.asc())).scalars().all()
+    # Load all forecasts but exclude seed/bootstrap forecasts from training
+    all_forecasts = uow.session.execute(select(ForecastORM).order_by(ForecastORM.created_at.asc())).scalars().all()
+    # Filter out seed forecasts (synthetic/deterministic training data)
+    forecasts = [f for f in all_forecasts if "seed" not in f.name.lower() and "bootstrap" not in f.name.lower()]
+    
+    import logging
+    log = logging.getLogger(__name__)
+    excluded_count = len(all_forecasts) - len(forecasts)
+    if excluded_count > 0:
+        excluded_names = [f.name for f in all_forecasts if f not in forecasts]
+        log.warning(f"Excluded {excluded_count} seed/bootstrap forecasts from training: {excluded_names}")
+    
     if len(forecasts) < 2:
         raise ValueError("insufficient forecast history for ML training")
 
-    forecast_data = uow.session.execute(select(ForecastDataORM)).scalars().all()
+    # Only load forecast_data for valid (non-seed) forecasts
+    valid_forecast_ids = {f.id for f in forecasts}
+    all_forecast_data = uow.session.execute(select(ForecastDataORM)).scalars().all()
+    forecast_data = [fd for fd in all_forecast_data if fd.forecast_id in valid_forecast_ids]
     if len(forecast_data) < 50:
         raise ValueError("insufficient forecast data rows for ML training")
 
