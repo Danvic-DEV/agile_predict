@@ -580,6 +580,13 @@ async def index() -> HTMLResponse:
             stroke-linecap: round;
             stroke-linejoin: round;
         }
+        .forecast-chart-actual {
+            fill: none;
+            stroke: #e85ba3;
+            stroke-width: 2.5;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
         .forecast-chart-band {
             fill: rgba(242, 184, 75, 0.2);
             stroke: none;
@@ -635,6 +642,10 @@ async def index() -> HTMLResponse:
         }
         .legend-swatch-band {
             background: rgba(242, 184, 75, 0.2);
+        }
+        .legend-swatch-actual {
+            background: 0;
+            border-top: 2.5px solid #e85ba3;
         }
         .legend-item-midnight {
             color: #9eb2be;
@@ -882,6 +893,10 @@ async def index() -> HTMLResponse:
                         <span class=\"legend-swatch legend-swatch-band\"></span>
                         Min-Max
                     </span>
+                    <span class=\"legend-item\">
+                        <span class=\"legend-swatch legend-swatch-actual\"></span>
+                        Actual
+                    </span>
                     <span class=\"legend-item legend-item-midnight\">Midnight markers show day boundaries</span>
                 </div>
             </div>
@@ -1022,7 +1037,11 @@ async def index() -> HTMLResponse:
                 const pred = toNumber(point.agile_pred);
                 return pred == null ? 0 : pred;
             });
-            const values = lows.concat(highs).concat(preds);
+            const actuals = points.map((point) => {
+                const actual = toNumber(point.agile_actual);
+                return actual == null ? 0 : actual;
+            });
+            const values = lows.concat(highs).concat(preds).concat(actuals);
             const minValue = Math.min(...values);
             const maxValue = Math.max(...values);
             const range = Math.max(maxValue - minValue, 1);
@@ -1048,6 +1067,19 @@ async def index() -> HTMLResponse:
                     const y = scaleY(yValue);
                     return (index === 0 ? 'M' : 'L') + x.toFixed(2) + ',' + y.toFixed(2);
                 })
+                .join(' ');
+
+            const actualPath = points
+                .map((point, index) => {
+                    const actual = toNumber(point.agile_actual);
+                    if (actual == null) {
+                        return null;
+                    }
+                    const x = scaleX(index);
+                    const y = scaleY(actual);
+                    return (index === 0 ? 'M' : 'L') + x.toFixed(2) + ',' + y.toFixed(2);
+                })
+                .filter((segment) => segment != null)
                 .join(' ');
 
             const highPath = points
@@ -1103,6 +1135,7 @@ async def index() -> HTMLResponse:
             return {
                 predPath,
                 bandPath,
+                actualPath,
                 yTicks,
                 midnightMarkers,
             };
@@ -1141,6 +1174,9 @@ async def index() -> HTMLResponse:
 
             parts.push('<path d="' + chart.bandPath + '" class="forecast-chart-band"></path>');
             parts.push('<path d="' + chart.predPath + '" class="forecast-chart-line"></path>');
+            if (chart.actualPath) {
+                parts.push('<path d="' + chart.actualPath + '" class="forecast-chart-actual"></path>');
+            }
             parts.push(
                 '<text x="' + (CHART_MARGIN.left - 8) + '" y="' + (CHART_MARGIN.top - 2) + '" text-anchor="end" class="forecast-chart-axis-title">p/kWh</text>'
             );

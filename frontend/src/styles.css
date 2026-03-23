@@ -567,6 +567,14 @@ body {
   stroke-linejoin: round;
 }
 
+.forecast-chart-actual {
+  fill: none;
+  stroke: #e85ba3;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .forecast-chart-band {
   fill: rgba(242, 184, 75, 0.2);
   stroke: none;
@@ -632,6 +640,11 @@ body {
 
 .legend-swatch-band {
   background: rgba(242, 184, 75, 0.2);
+}
+
+.legend-swatch-actual {
+  background: 0;
+  border-top: 2.5px solid #e85ba3;
 }
 
 .legend-item-midnight {

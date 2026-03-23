@@ -30,6 +30,7 @@ type MidnightMarker = {
 type ChartModel = {
   predPath: string;
   bandPath: string;
+  actualPath: string;
   yTicks: ChartTick[];
   midnightMarkers: MidnightMarker[];
 };
@@ -69,7 +70,8 @@ function buildChartModel(points: AgilePricePoint[]): ChartModel {
 
   const lows = points.map((point) => point.agile_low ?? point.agile_pred);
   const highs = points.map((point) => point.agile_high ?? point.agile_pred);
-  const values = [...lows, ...highs, ...points.map((point) => point.agile_pred)];
+  const actuals = points.map((point) => point.agile_actual).filter((val) => val != null) as number[];
+  const values = [...lows, ...highs, ...points.map((point) => point.agile_pred), ...actuals];
   const minValue = Math.min(...values);
   const maxValue = Math.max(...values);
   const range = Math.max(maxValue - minValue, 1);
@@ -93,6 +95,18 @@ function buildChartModel(points: AgilePricePoint[]): ChartModel {
       const y = scaleY(point.agile_pred);
       return `${index === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
     })
+    .join(" ");
+
+  const actualPath = points
+    .map((point, index) => {
+      if (point.agile_actual == null) {
+        return null;
+      }
+      const x = scaleX(index);
+      const y = scaleY(point.agile_actual);
+      return `${index === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
+    })
+    .filter((segment) => segment != null)
     .join(" ");
 
   const highPath = points
@@ -130,6 +144,7 @@ function buildChartModel(points: AgilePricePoint[]): ChartModel {
   return {
     predPath,
     bandPath,
+    actualPath,
     yTicks,
     midnightMarkers,
   };
@@ -470,6 +485,9 @@ export function ForecastDashboard() {
                   ))}
                   <path d={latestSummary.chart.bandPath} className="forecast-chart-band" />
                   <path d={latestSummary.chart.predPath} className="forecast-chart-line" />
+                  {latestSummary.chart.actualPath && (
+                    <path d={latestSummary.chart.actualPath} className="forecast-chart-actual" />
+                  )}
                   <text
                     x={CHART_MARGIN.left - 8}
                     y={CHART_MARGIN.top - 2}
@@ -487,6 +505,10 @@ export function ForecastDashboard() {
                   <span className="legend-item">
                     <span className="legend-swatch legend-swatch-band" />
                     Min-Max
+                  </span>
+                  <span className="legend-item">
+                    <span className="legend-swatch legend-swatch-actual" />
+                    Actual
                   </span>
                   <span className="legend-item legend-item-midnight">Midnight markers show day boundaries</span>
                 </div>
