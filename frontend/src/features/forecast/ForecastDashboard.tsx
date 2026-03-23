@@ -234,7 +234,7 @@ export function ForecastDashboard() {
   const [regions, setRegions] = useState<string[]>(["B"]);
   const [selectedRegion, setSelectedRegion] = useState("B");
   const [days, setDays] = useState(7);
-  const [forecastCount, setForecastCount] = useState(1);
+  const [forecastCount, setForecastCount] = useState(3);
   const [state, setState] = useState<LoadState>("idle");
   const [error, setError] = useState<string>("");
   const [customerForecastStatus, setCustomerForecastStatus] = useState<CustomerForecastStatus>("available");
@@ -307,6 +307,54 @@ export function ForecastDashboard() {
       chart: buildChartModel(latest.prices),
     };
   }, [latest]);
+
+  // Calculate consensus confidence when multiple forecasts are available
+  const consensusConfidence = useMemo(() => {
+    if (prices.length < 2 || !latest) {
+      return null;
+    }
+
+    // Build a map of date_time -> array of predictions across forecasts
+    const slotPredictions = new Map<string, number[]>();
+    
+    prices.forEach((forecast) => {
+      forecast.prices.forEach((point) => {
+        const key = point.date_time;
+        if (!slotPredictions.has(key)) {
+          slotPredictions.set(key, []);
+        }
+        slotPredictions.get(key)!.push(point.agile_pred);
+      });
+    });
+
+    // Calculate average standard deviation across all slots
+    let totalStdDev = 0;
+    let slotCount = 0;
+
+    slotPredictions.forEach((values) => {
+      if (values.length < 2) return;
+      
+      const mean = values.reduce((sum, v) => sum + v, 0) / values.length;
+      const variance = values.reduce((sum, v) => sum + Math.pow(v - mean, 2), 0) / values.length;
+      const stdDev = Math.sqrt(variance);
+      
+      totalStdDev += stdDev;
+      slotCount++;
+    });
+
+    const avgStdDev = slotCount > 0 ? totalStdDev / slotCount : 0;
+    
+    // Convert to confidence score (0-100%)
+    // Lower std dev = higher confidence
+    // Typical std dev for diverging forecasts might be 2-5 p/kWh
+    // Scale: 0 stddev = 100% confidence, 5+ stddev = 0% confidence
+    const confidence = Math.max(0, Math.min(100, 100 - (avgStdDev * 20)));
+    
+    return {
+      percentage: confidence,
+      avgStdDev: avgStdDev,
+    };
+  }, [prices, latest]);
 
   const dayGroups = useMemo(() => {
     if (!latest) {
@@ -413,9 +461,20 @@ export function ForecastDashboard() {
               <strong>{latest?.name ?? "n/a"}</strong>
             </div>
             <div>
-              <span className="label">Created</span>
+              <span className="label">Updated</span>
               <strong>{latest ? formatSlotLabel(latest.created_at) : "n/a"}</strong>
             </div>
+            {consensusConfidence !== null && (
+              <div>
+                <span className="label">Consensus Confidence</span>
+                <strong>
+                  {consensusConfidence.percentage.toFixed(0)}%
+                  <span style={{ fontSize: "0.85em", opacity: 0.7, marginLeft: 4 }}>
+                    (±{consensusConfidence.avgStdDev.toFixed(2)} p/kWh)
+                  </span>
+                </strong>
+              </div>
+            )}
           </div>
           {latestSummary && (
             <>

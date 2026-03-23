@@ -20,6 +20,7 @@ from src.domain.bootstrap_bundle import (
     BootstrapBundleConfig,
     HistoryForecastFeatureRow,
     prune_old_forecasts,
+    prune_update_job_forecasts,
     write_bootstrap_bundle,
     write_history_forecast,
 )
@@ -219,12 +220,17 @@ def run_update_forecast_job(uow: UnitOfWork) -> ForecastRunResult:
     if forward_feature_warning is not None:
         ml_error = f"{ml_error}; {forward_feature_warning}" if ml_error else forward_feature_warning
 
+    # Generate timestamped forecast name for multi-forecast tracking
+    now_utc = datetime.now(timezone.utc)
+    forecast_timestamp = now_utc.strftime("%Y-%m-%d-%H:%M")
+    forecast_name = f"bundle::update-job-{forecast_timestamp}"
+
     result = write_bootstrap_bundle(
         uow=uow,
         config=BootstrapBundleConfig(
             points=forecast_points,
-            idempotency_key="update-job-seed",
-            replace_existing=True,
+            forecast_name=forecast_name,
+            replace_existing=False,
             regions=tuple(settings.bootstrap_regions_list),
             day_ahead_values=day_ahead_values,
             day_ahead_low_values=day_ahead_low_values,
@@ -235,6 +241,9 @@ def run_update_forecast_job(uow: UnitOfWork) -> ForecastRunResult:
             write_agile_data=True,
         ),
     )
+
+    # Prune old update-job forecasts, keeping only the last 3
+    prune_update_job_forecasts(uow=uow, keep_count=3)
 
     records_written = result.forecast_data_points_written + result.agile_data_points_written
     output = ForecastRunResult(

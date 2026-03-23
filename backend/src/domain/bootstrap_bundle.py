@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Protocol
+from typing import Any, Protocol
 from zoneinfo import ZoneInfo
 
 from src.core.regions import REGION_FACTORS, normalize_region
@@ -65,12 +65,14 @@ class BootstrapBundleUoW(Protocol):
     forecast_writes: _ForecastWrites
     forecast_data_writes: _ForecastDataWrites
     agile_data_writes: _AgileDataWrites
+    session: Any  # SQLAlchemy session for direct queries
 
 
 @dataclass(frozen=True)
 class BootstrapBundleConfig:
     points: int = 48
     idempotency_key: str | None = None
+    forecast_name: str | None = None
     replace_existing: bool = True
     regions: tuple[str, ...] = ("X", "G")
 
@@ -141,7 +143,9 @@ def _align_to_half_hour(dt: datetime) -> datetime:
 def write_bootstrap_bundle(uow: BootstrapBundleUoW, config: BootstrapBundleConfig) -> BootstrapBundleResult:
     now = datetime.now(timezone.utc)
     forecast_name = now.strftime("%Y-%m-%d %H:%M:%S.%f")
-    if config.idempotency_key:
+    if config.forecast_name:
+        forecast_name = config.forecast_name
+    elif config.idempotency_key:
         forecast_name = f"bundle::{config.idempotency_key}"
 
     regions = tuple(normalize_region(r) for r in dict.fromkeys(config.regions))
@@ -247,7 +251,30 @@ def prune_old_forecasts(uow: BootstrapBundleUoW, max_age_days: int = 730) -> int
     uow.forecast_data_writes.delete_for_forecasts(ids)
     uow.agile_data_writes.delete_for_forecasts(ids)
     uow.forecast_writes.delete_by_ids(ids)
-    return len(ids)
+
+def prune_update_job_forecasts(uow: BootstrapBundleUoW, keep_count: int = 3) -> int:
+    """Keep only the most recent N update-job forecasts, delete older ones."""
+    from sqlalchemy import select
+    from src.repositories.sql_models import ForecastORM
+    
+    # Get all update-job forecasts ordered by created_at descending
+    stmt = (
+        select(ForecastORM)
+        .where(ForecastORM.name.like("bundle::update-job-%"))
+        .order_by(ForecastORM.created_at.desc())
+    )
+    forecasts = uow.session.execute(stmt).scalars().all()
+    
+    if len(forecasts) <= keep_count:
+        return 0
+    
+    # Delete all forecasts beyond the keep_count
+    to_delete = forecasts[keep_count:]
+    ids = [f.id for f in to_delete]
+    
+    uow.forecast_data_writes.delete_for_forecasts(ids)
+    uow.agile_data_writes.delete_for_forecasts(ids)
+    return uow.forecast_writes.delete_by_ids(ids)    return len(ids)
 
 
 def write_history_forecast(
