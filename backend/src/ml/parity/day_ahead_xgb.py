@@ -285,7 +285,8 @@ def run_ml_day_ahead_forecast(
     train_df = train_df[train_df["days_ago"] < max_days]
     train_df = train_df[(train_df.index >= train_df["ag_start"]) & (train_df.index < train_df["ag_end"])]
     train_df = train_df[list(LEGACY_FEATURES)].merge(prices_df[["day_ahead"]], left_index=True, right_index=True, how="inner")
-    train_df = train_df.dropna()
+    # Allow NaN in features - XGBoost will learn to handle missing data
+    train_df = train_df.dropna(subset=["day_ahead"])  # Only require target to be present
     if len(train_df) < 30:
         raise ValueError("insufficient joined training rows after legacy filters")
 
@@ -343,7 +344,7 @@ def run_ml_day_ahead_forecast(
     fc["peak"] = ((fc["time"] >= 16) & (fc["time"] < 19)).astype(float)
 
     feature_frame = fc.reindex(columns=list(LEGACY_FEATURES)).astype(float)
-    feature_frame = feature_frame.ffill().bfill()
+    # Do NOT ffill/bfill - pass NaN to XGBoost which learned to handle missing values
     preds = pd.Series(_predict_with_dmatrix(model, feature_frame), index=fc.index, name="day_ahead").astype(float)
 
     range_mode = "fallback"
