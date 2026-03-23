@@ -346,6 +346,12 @@ def run_ml_day_ahead_forecast(
     feature_frame = fc.reindex(columns=list(LEGACY_FEATURES)).astype(float)
     # Do NOT ffill/bfill - pass NaN to XGBoost which learned to handle missing values
     preds = pd.Series(_predict_with_dmatrix(model, feature_frame), index=fc.index, name="day_ahead").astype(float)
+    
+    # DEBUG: Log raw predictions to diagnose diversity issue
+    import logging
+    log = logging.getLogger(__name__)
+    log.warning(f"RAW MODEL PREDICTIONS (slots 200-220): {preds.iloc[200:220].tolist()}")
+    log.warning(f"INPUT FEATURES (slots 200-205):\n{feature_frame.iloc[200:205].to_string()}")
 
     range_mode = "fallback"
     lows = preds * 0.9
@@ -392,6 +398,9 @@ def run_ml_day_ahead_forecast(
         bridge_day_ahead=bridge_series,
     )
     blend_mode = "blend+bridge" if bridge_series is not None and not bridge_series.empty else "blend"
+    
+    # DEBUG: Log blended predictions to see if blending kills diversity
+    log.warning(f"BLENDED PREDICTIONS (slots 200-220): {preds.iloc[200:220].tolist()}")
     if range_mode == "kde":
         range_mode = f"kde+{blend_mode}"
     else:
