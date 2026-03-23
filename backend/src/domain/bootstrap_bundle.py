@@ -236,7 +236,7 @@ def write_bootstrap_bundle(uow: BootstrapBundleUoW, config: BootstrapBundleConfi
     )
 
 
-def prune_old_forecasts(uow: BootstrapBundleUoW, max_age_days: int = 65) -> int:
+def prune_old_forecasts(uow: BootstrapBundleUoW, max_age_days: int = 730) -> int:
     cutoff = datetime.now(timezone.utc) - timedelta(days=max_age_days)
     old_forecasts = uow.forecast_writes.list_older_than(cutoff)
     old_history = [f for f in old_forecasts if f.name.startswith(_HISTORY_NAME_PREFIX)]

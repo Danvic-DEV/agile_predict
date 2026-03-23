@@ -59,6 +59,7 @@ class CacheSnapshot:
     forecasts: list[dict[str, Any]] = field(default_factory=list)
     regions: list[str] = field(default_factory=list)
     prices_by_region_and_days: dict[str, dict[int, list[dict[str, Any]]]] = field(default_factory=dict)
+    training_days: int | None = None
     refreshed_at: str | None = None
     last_error: str | None = None
 
@@ -74,12 +75,14 @@ class PublicCache:
         forecasts: list[dict[str, Any]],
         regions: list[str],
         prices_by_region_and_days: dict[str, dict[int, list[dict[str, Any]]]],
+        training_days: int | None = None,
     ) -> None:
         async with self._lock:
             self._snapshot = CacheSnapshot(
                 forecasts=forecasts,
                 regions=regions,
                 prices_by_region_and_days=prices_by_region_and_days,
+                training_days=training_days,
                 refreshed_at=datetime.now(timezone.utc).isoformat(),
                 last_error=None,
             )
@@ -107,6 +110,7 @@ class PublicCache:
                     region: {days: list(payload) for days, payload in by_days.items()}
                     for region, by_days in self._snapshot.prices_by_region_and_days.items()
                 },
+                training_days=self._snapshot.training_days,
                 refreshed_at=self._snapshot.refreshed_at,
                 last_error=self._snapshot.last_error,
             )
@@ -185,11 +189,19 @@ async def _fetch_prices_variant(client: httpx.AsyncClient, *, region: str, days:
 
 async def _build_snapshot(
     days_by_region: dict[str, set[int]] | None = None,
-) -> tuple[list[dict[str, Any]], list[str], dict[str, dict[int, list[dict[str, Any]]]]]:
+) -> tuple[list[dict[str, Any]], list[str], dict[str, dict[int, list[dict[str, Any]]]], int | None]:
     timeout = httpx.Timeout(CACHE_REQUEST_TIMEOUT_SECONDS)
     async with httpx.AsyncClient(timeout=timeout) as client:
         forecasts_payload = await _fetch_json(client, "/api/v1/forecasts", {"limit": 5})
         regions_payload = await _fetch_json(client, "/api/v1/forecasts/regions")
+
+        training_days: int | None = None
+        try:
+            diag_payload = await _fetch_json(client, "/api/v1/diagnostics/latest-summary")
+            if isinstance(diag_payload, dict) and diag_payload.get("update_ml_training_rows"):
+                training_days = round(diag_payload["update_ml_training_rows"] / 48)
+        except Exception:  # noqa: S110
+            pass
 
         if not isinstance(forecasts_payload, list):
             raise RuntimeError("Upstream forecasts payload is not a list.")
@@ -222,15 +234,16 @@ async def _build_snapshot(
             by_days = prices_by_region_and_days.setdefault(region, {})
             by_days[days] = prices_payload
 
-    return forecasts_payload, regions, prices_by_region_and_days
+    return forecasts_payload, regions, prices_by_region_and_days, training_days
 
 
 async def refresh_cache_once(days_by_region: dict[str, set[int]] | None = None) -> None:
-    forecasts, regions, prices_by_region_and_days = await _build_snapshot(days_by_region)
+    forecasts, regions, prices_by_region_and_days, training_days = await _build_snapshot(days_by_region)
     await cache.set_snapshot(
         forecasts=forecasts,
         regions=regions,
         prices_by_region_and_days=prices_by_region_and_days,
+        training_days=training_days,
     )
 
 
@@ -385,6 +398,7 @@ async def public_forecast_availability():
             for region, by_days in snapshot.prices_by_region_and_days.items()
         },
         "refreshed_at": snapshot.refreshed_at,
+        "training_days": snapshot.training_days,
         "default_days": DEFAULT_DAYS,
         "min_days": MIN_DAYS,
         "max_days": MAX_DAYS,
@@ -848,6 +862,7 @@ async def index() -> HTMLResponse:
                 <h1>Agile Predict</h1>
             </div>
             <p>Estimate upcoming Octopus Agile electricity prices so you can plan when to use power at lower-cost periods. These values are model predictions from recent data, not guaranteed tariff prices, and should be used as guidance only.</p>
+            <p style=\"margin-top: 0.75rem; opacity: 0.85; font-size: 0.9rem;\">Prediction accuracy improves as the model accumulates more training data. Significant improvements are typically seen at 1 month (~1,400 training samples), 6 months (~8,600 samples), and continue steadily over the first 2 years of operation.</p>
         </header>
         <section class=\"card\">
             <div class=\"controls-row\">
@@ -862,6 +877,10 @@ async def index() -> HTMLResponse:
                 <label>
                     Data Age
                     <span id=\"cache_age\" class=\"control-note\">-</span>
+                </label>
+                <label id=\"training_container\" style=\"display: none; opacity: 0.7; font-style: italic;\">
+                    Training Data
+                    <span id=\"training\" class=\"control-note\">-</span>
                 </label>
                 <button id=\"refresh\" type=\"button\">Refresh View</button>
             </div>
@@ -1370,6 +1389,8 @@ async def index() -> HTMLResponse:
             const avgEl = document.getElementById('avg_pred');
             const maxEl = document.getElementById('max_pred');
             const countEl = document.getElementById('slot_count');
+            const trainingEl = document.getElementById('training');
+            const trainingContainer = document.getElementById('training_container');
 
             if (!summary) {
                 minEl.textContent = '-';
@@ -1379,10 +1400,25 @@ async def index() -> HTMLResponse:
                 return;
             }
 
-            minEl.textContent = summary.min.toFixed(2);
-            avgEl.textContent = summary.avg.toFixed(2);
-            maxEl.textContent = summary.max.toFixed(2);
+            minEl.textContent = summary.min.toFixed(2) + ' p/kWh';
+            avgEl.textContent = summary.avg.toFixed(2) + ' p/kWh';
+            maxEl.textContent = summary.max.toFixed(2) + ' p/kWh';
             countEl.textContent = String(summary.count);
+        }
+
+        function updateTrainingData(trainingDays) {
+            const trainingEl = document.getElementById('training');
+            const trainingContainer = document.getElementById('training_container');
+            if (!trainingEl || !trainingContainer) {
+                return;
+            }
+            if (trainingDays != null && trainingDays > 0) {
+                trainingContainer.style.display = '';
+                const days = Number(trainingDays);
+                trainingEl.textContent = String(days) + (days === 1 ? ' day' : ' days');
+            } else {
+                trainingContainer.style.display = 'none';
+            }
         }
 
         function renderDayTabs(dayGroups, selectedDayKey, onSelect) {
@@ -1442,6 +1478,7 @@ async def index() -> HTMLResponse:
                 try {
                     availability = await loadAvailability();
                     updateCacheAge(availability.refreshed_at);
+                    updateTrainingData(availability.training_days);
                     const selectedDays = syncSelectedDays();
                     if (selectedDays == null) {
                         throw new Error('Selected region has no warmed day ranges yet');

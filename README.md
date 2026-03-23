@@ -2,6 +2,37 @@
 
 Agile Predict forecasts Octopus Agile electricity prices using a pipeline that combines market, grid, and weather data.
 
+## Usage
+
+### Public Web UI
+
+The public web interface is available at **[agilepredict.danvic.dev](https://agilepredict.danvic.dev/)** and provides:
+
+- Up to 13-day electricity price forecasts for all UK regions
+- Interactive charts comparing predictions with actual prices
+- Real-time cache status and model training data indicators
+- Read-only REST API for programmatic access
+
+### Home Assistant Integration
+
+Integrate Agile Predict forecasts directly into Home Assistant for smart home automation:
+
+- **REST sensor** for automatic price updates every 30 minutes
+- **ApexCharts visualization** comparing predicted vs actual Octopus Agile prices
+- **Automation examples** for cheap period notifications and smart charging
+
+See the **[Home Assistant integration guide](home_assistant/README.md)** for complete setup instructions, automation examples, and configuration options.
+
+### API Access
+
+The public API is documented at [agilepredict.danvic.dev](https://agilepredict.danvic.dev/) and provides cache-served endpoints:
+
+- `GET /api/v1/forecasts/availability` - Cache metadata and warmed regions
+- `GET /api/v1/forecasts/regions` - Available region codes
+- `GET /api/v1/forecasts/prices` - Price predictions with min/max ranges
+
+All endpoints are read-only and require no authentication.
+
 ## Source lineage
 
 This repository is derived from the original source project:

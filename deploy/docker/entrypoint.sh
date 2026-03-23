@@ -81,4 +81,14 @@ alembic upgrade head || {
   echo "WARNING: Alembic migrations failed, attempting fallback to metadata.create_all()"
 }
 
+# Start backup daemon in background if using local database
+if [ "${DB_MODE}" = "local" ]; then
+  BACKUP_DAEMON="/app/deploy/docker/backup_daemon.sh"
+  if [ -f "${BACKUP_DAEMON}" ]; then
+    chmod +x "${BACKUP_DAEMON}"
+    echo "Starting backup daemon (daily backups at ${BACKUP_HOUR:-3}:00)..."
+    "${BACKUP_DAEMON}" &
+  fi
+fi
+
 uvicorn src.main:app --host "${API_HOST:-0.0.0.0}" --port "${API_PORT:-8000}"

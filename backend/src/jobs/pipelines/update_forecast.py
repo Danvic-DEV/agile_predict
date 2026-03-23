@@ -390,10 +390,10 @@ def run_update_forecast_job(uow: UnitOfWork) -> ForecastRunResult:
         log.warning("External system context ingest failed (non-fatal): %s", exc)
 
     # ------------------------------------------------------------------
-    # Step 4: prune history forecasts older than 65 days.
+    # Step 4: prune history forecasts older than 730 days (keeps 2 years for year-over-year seasonality).
     # ------------------------------------------------------------------
     try:
-        pruned = prune_old_forecasts(uow=uow, max_age_days=65)
+        pruned = prune_old_forecasts(uow=uow, max_age_days=730)
         if pruned:
             log.info("Pruned %s old history forecast rows", pruned)
     except Exception as exc:  # noqa: BLE001
