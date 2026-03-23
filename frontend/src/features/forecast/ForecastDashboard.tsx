@@ -63,6 +63,7 @@ function buildChartModel(points: AgilePricePoint[]): ChartModel {
     return {
       predPath: "",
       bandPath: "",
+      actualPath: "",
       yTicks: [],
       midnightMarkers: [],
     };
