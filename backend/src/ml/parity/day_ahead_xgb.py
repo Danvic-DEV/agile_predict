@@ -343,7 +343,7 @@ def run_ml_day_ahead_forecast(
     fc["peak"] = ((fc["time"] >= 16) & (fc["time"] < 19)).astype(float)
 
     feature_frame = fc.reindex(columns=list(LEGACY_FEATURES)).astype(float)
-    # Do NOT ffill/bfill - let XGBoost handle missing values natively for diversity
+    feature_frame = feature_frame.ffill().bfill()
     preds = pd.Series(_predict_with_dmatrix(model, feature_frame), index=fc.index, name="day_ahead").astype(float)
 
     range_mode = "fallback"
