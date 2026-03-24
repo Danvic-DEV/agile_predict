@@ -8,7 +8,6 @@ import numpy as np
 import pandas as pd
 import xgboost as xg
 from sklearn.model_selection import cross_val_score
-from sklearn.neighbors import KernelDensity
 from sqlalchemy import select
 
 from src.repositories.sql_models import AgileActualORM, ForecastDataORM, ForecastORM, PriceHistoryORM
@@ -117,40 +116,6 @@ def _apply_legacy_scale_blend(
     return blended_pred, blended_low, blended_high
 
 
-def _kde_quantiles(
-    kde: KernelDensity,
-    dt: list[float],
-    pred: list[float],
-    quantiles: dict[str, float],
-    lim: tuple[float, float],
-) -> dict[str, list[float]]:
-    results = {q: [] for q in quantiles}
-    lower, upper = int(lim[0]), int(lim[1])
-
-    for dt1, pred1 in zip(dt, pred):
-        x = np.array([[dt1, pred1, p] for p in range(lower, upper)])
-        c = pd.Series(index=x[:, 2], data=np.exp(kde.score_samples(x)).cumsum())
-        c /= c.iloc[-1]
-
-        for key, quantile in quantiles.items():
-            below = c[c < quantile]
-            if len(below) == 0:
-                results[key].append(float("nan"))
-                continue
-
-            idx = int(below.index[-1])
-            if idx + 1 not in c.index:
-                results[key].append(float(idx))
-                continue
-
-            span = c[idx + 1] - c[idx]
-            if span == 0:
-                results[key].append(float(idx))
-                continue
-
-            results[key].append(float((quantile - c[idx]) / span + idx))
-
-    return results
 
 
 def _to_dataframe(rows: list[object], cols: list[str]) -> pd.DataFrame:
@@ -411,27 +376,20 @@ def run_ml_day_ahead_forecast(
         results = test_df[["dt", "day_ahead"]].copy()
         test_features = test_df[list(LEGACY_FEATURES)].astype(float)
         results["pred"] = _predict_with_dmatrix(model, test_features)
+        results["residual"] = results["day_ahead"] - results["pred"]
 
-        kde = KernelDensity()
-        kde.fit(results[["dt", "pred", "day_ahead"]].to_numpy())
+        # Use empirical residual quantiles: bands are offsets from pred based on
+        # the IQR of actual errors on the test set. This correctly centres the
+        # band on pred and reflects true model uncertainty rather than the raw
+        # price distribution (which the KDE joint approach collapsed into).
+        p25_residual = float(results["residual"].quantile(0.25))
+        p75_residual = float(results["residual"].quantile(0.75))
 
-        lower = float(np.floor(results[["pred", "day_ahead"]].min(axis=1).min() / 11) * 10)
-        upper = float(np.ceil(results[["pred", "day_ahead"]].max(axis=1).max() / 9) * 10)
-        quantiles = _kde_quantiles(
-            kde,
-            dt=fc["dt"].tolist(),
-            pred=preds.tolist(),
-            quantiles={"day_ahead_low": 0.25, "day_ahead_high": 0.75},
-            lim=(lower, upper),
-        )
-
-        lows = pd.Series(quantiles["day_ahead_low"], index=fc.index).rolling(3, center=True).mean().bfill().ffill()
-        highs = pd.Series(quantiles["day_ahead_high"], index=fc.index).rolling(3, center=True).mean().bfill().ffill()
-
-        # Do not clamp lows to pred — the KDE may legitimately place p25 above pred
-        # when the model has a low bias, and clamping produces a misleading flat floor.
+        lows = preds + p25_residual
+        highs = preds + p75_residual
+        # Ensure high >= pred; low is unclamped to show honest bias direction.
         highs = pd.concat([preds, highs], axis=1).max(axis=1)
-        range_mode = "kde"
+        range_mode = "residual_iqr"
 
     bridge_series: pd.Series | None = None
     if bridge_day_ahead_values:
