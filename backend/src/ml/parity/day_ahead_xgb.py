@@ -405,8 +405,8 @@ def run_ml_day_ahead_forecast(
     preds = pd.Series(_predict_with_dmatrix(model, feature_frame), index=fc.index, name="day_ahead").astype(float)
 
     range_mode = "fallback"
-    lows = preds * 0.9
-    highs = preds * 1.1
+    lows = preds * 0.95
+    highs = preds * 1.05
     if (len(test_df) > 10) and (not no_ranges):
         results = test_df[["dt", "day_ahead"]].copy()
         test_features = test_df[list(LEGACY_FEATURES)].astype(float)
@@ -421,14 +421,15 @@ def run_ml_day_ahead_forecast(
             kde,
             dt=fc["dt"].tolist(),
             pred=preds.tolist(),
-            quantiles={"day_ahead_low": 0.1, "day_ahead_high": 0.9},
+            quantiles={"day_ahead_low": 0.25, "day_ahead_high": 0.75},
             lim=(lower, upper),
         )
 
         lows = pd.Series(quantiles["day_ahead_low"], index=fc.index).rolling(3, center=True).mean().bfill().ffill()
         highs = pd.Series(quantiles["day_ahead_high"], index=fc.index).rolling(3, center=True).mean().bfill().ffill()
 
-        lows = pd.concat([preds, lows], axis=1).min(axis=1)
+        # Do not clamp lows to pred — the KDE may legitimately place p25 above pred
+        # when the model has a low bias, and clamping produces a misleading flat floor.
         highs = pd.concat([preds, highs], axis=1).max(axis=1)
         range_mode = "kde"
 
