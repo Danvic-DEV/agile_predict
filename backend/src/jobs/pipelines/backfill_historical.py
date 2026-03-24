@@ -32,7 +32,6 @@ from src.ml.ingest.grid_weather import (
 )
 from src.repositories.sql_models import AgileActualORM, ForecastORM, ForecastDataORM
 from src.repositories.unit_of_work import UnitOfWork
-from src.schemas.forecast import ForecastDataCreate, ForecastCreate
 
 log = logging.getLogger(__name__)
 
@@ -169,13 +168,11 @@ def create_backfill_forecasts(
             continue
         
         # Create forecast representing this historical day
-        forecast = ForecastCreate(
+        forecast_orm = ForecastORM(
             name=forecast_name,
-            region=region.upper(),
             created_at=datetime.combine(date.date(), datetime.min.time(), tzinfo=timezone.utc),
         )
         
-        forecast_orm = ForecastORM(**forecast.model_dump())
         uow.session.add(forecast_orm)
         uow.session.flush()  # Get the forecast ID
         
