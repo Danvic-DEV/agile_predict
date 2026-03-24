@@ -39,6 +39,7 @@ class LatestForecastDiagnostics(BaseModel):
     update_ml_write_mode: str | None
     update_ml_device_used: str | None
     training_mode: bool = False
+    allow_partial_forecast_horizon: bool = False
 
 
 class LatestParitySummary(BaseModel):

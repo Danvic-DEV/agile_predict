@@ -55,6 +55,7 @@ export interface LatestForecastDiagnostics {
   update_ml_write_mode: string | null;
   update_ml_device_used: string | null;
   training_mode: boolean;
+  allow_partial_forecast_horizon: boolean;
 }
 
 export interface BootstrapForecastBundleRequest {

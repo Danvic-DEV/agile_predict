@@ -1153,6 +1153,10 @@ export function DiagnosticsPanel() {
                   <strong>{data.update_ml_write_mode ?? "n/a"}</strong>
                 </div>
                 <div>
+                  <span className="label">Partial Horizon Mode</span>
+                  <strong>{data.allow_partial_forecast_horizon ? "enabled" : "disabled"}</strong>
+                </div>
+                <div>
                   <span className="label">Training Rows</span>
                   <strong>{data.update_ml_training_rows ?? "n/a"}</strong>
                 </div>

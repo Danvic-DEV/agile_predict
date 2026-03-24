@@ -238,6 +238,7 @@ def latest_summary(uow: UnitOfWorkDep) -> LatestForecastDiagnostics:
         update_ml_write_mode=update_state.get("ml_write_mode"),
         update_ml_device_used=update_state.get("ml_device_used"),
         training_mode=update_state.get("training_mode", False),
+        allow_partial_forecast_horizon=settings.allow_partial_forecast_horizon,
     )
 
 
