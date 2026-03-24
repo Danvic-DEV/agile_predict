@@ -158,7 +158,7 @@ def _to_dataframe(rows: list[object], cols: list[str]) -> pd.DataFrame:
 
 def check_ml_training_readiness(
     uow: UnitOfWork,
-    max_days: int = 180,
+    max_days: int = 730,
     min_joined_rows: int = 30,
 ) -> tuple[bool, str | None]:
     """Return whether ML training can run with the current legacy filters."""
@@ -229,7 +229,7 @@ def run_ml_day_ahead_forecast(
     point_count: int,
     future_feature_frame: pd.DataFrame,
     bridge_day_ahead_values: tuple[float, ...] | None = None,
-    max_days: int = 180,
+    max_days: int = 730,
     no_ranges: bool = False,
     use_gpu: bool = False,
     training_region: str = "B",
