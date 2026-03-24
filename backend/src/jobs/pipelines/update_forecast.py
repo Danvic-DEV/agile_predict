@@ -326,12 +326,15 @@ def run_update_forecast_job(uow: UnitOfWork) -> ForecastRunResult:
     # ------------------------------------------------------------------
     # Step 3a: fetch and collect actual released Agile prices from Octopus
     # for all 15 UK regions. These are the retroactively measured prices
-    # used for accuracy comparison vs forecasts.
+    # used for accuracy comparison vs forecasts and ML training.
+    # 
+    # Default: Last 365 days (1 year) to build substantial training dataset
+    # Use /admin-jobs/backfill-agile-prices for multi-year deep backfill
     # ------------------------------------------------------------------
     agile_actual_upsert_count = 0
     try:
         now_utc = datetime.now(timezone.utc)
-        from_date = now_utc - timedelta(days=30)
+        from_date = now_utc - timedelta(days=365)  # 1 year lookback
         # Agile prices are released ~4pm daily covering up to 10:30pm the next
         # day, so we must extend to_date to capture those forward-released prices.
         to_date = now_utc + timedelta(days=2)

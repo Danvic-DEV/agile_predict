@@ -182,15 +182,25 @@ def fetch_agile_prices_all_regions(
     from_date: datetime | None = None,
     to_date: datetime | None = None,
     timeout: int = 20,
+    regions: list[str] | None = None,
 ) -> dict[str, dict[datetime, float]]:
     """
-    Fetch Agile prices for all 15 UK regions.
+    Fetch Agile prices for specified or all 15 UK regions.
+    
+    Args:
+        from_date: Start date for price fetch
+        to_date: End date for price fetch
+        timeout: HTTP timeout in seconds
+        regions: Optional list of specific regions (default: auto-discover all)
     
     Returns {region: {datetime: price}} structure.
     Failures in individual regions are logged but don't fail the whole operation.
     """
     product_id = _resolve_agile_product_id(timeout=timeout)
-    regions = _resolve_agile_regions(product_id=product_id, timeout=timeout)
+    
+    if regions is None:
+        regions = _resolve_agile_regions(product_id=product_id, timeout=timeout)
+    
     log.info("Using Octopus Agile product code: %s", product_id)
     log.info("Using Octopus Agile regions: %s", ",".join(regions))
 

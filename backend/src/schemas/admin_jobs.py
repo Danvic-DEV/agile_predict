@@ -74,3 +74,11 @@ class RunBackfillResponse(BaseModel):
     forecasts_created: int
     data_rows_created: int
     detail: str
+
+
+class BackfillAgilePricesResponse(BaseModel):
+    regions_processed: list[str]
+    total_prices_upserted: int
+    period_start: str
+    period_end: str
+    detail: str

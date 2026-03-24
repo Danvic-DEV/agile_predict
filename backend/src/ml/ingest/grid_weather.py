@@ -187,13 +187,16 @@ def _fetch_neso_demand(start_date: str) -> pd.Series:
         )
         return combined
 
-    # Fallback: NESO settlement-period demand datasets
+    # Fallback: NESO historic demand datasets (by year)
+    # Try recent years in reverse order to get most current data
     for rid in (
-        "bf5ab335-9b40-4ea4-b93a-ab4af7bce003",
-        "f6d02c0f-957b-48cb-82ee-09003f2ba759",
+        "8a4a771c-3929-4e56-93ad-cdf13219dea5",  # 2026
+        "b2bde559-3455-4021-b179-dfe60c0337b0",  # 2025
+        "f6d02c0f-957b-48cb-82ee-09003f2ba759",  # 2024
+        "bf5ab335-9b40-4ea4-b93a-ab4af7bce003",  # 2023
     ):
         try:
-            df = _neso_sql(rid, f'"SETTLEMENT_DATE" >= \'{start_date}T00:00:00Z\'')
+            df = _neso_sql(rid, f'"SETTLEMENT_DATE" >= \'{start_date}\'')
             if df.empty:
                 continue
             df.index = pd.to_datetime(df["SETTLEMENT_DATE"], utc=True) + (

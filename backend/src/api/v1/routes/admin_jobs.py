@@ -21,10 +21,11 @@ from src.ml.ingest.grid_weather import (
     _fetch_neso_solar_wind,
     _fetch_open_meteo,
 )
-from src.ml.ingest.octopus_agile import _resolve_agile_product_id, fetch_agile_prices_for_region
+from src.ml.ingest.octopus_agile import _resolve_agile_product_id, fetch_agile_prices_for_region, fetch_agile_prices_all_regions
 from src.ml.ingest.system_context import fetch_fuelinst_context
 from src.repositories.types import AgileDataWrite
 from src.schemas.admin_jobs import (
+    BackfillAgilePricesResponse,
     BootstrapForecastBundleRequest,
     BootstrapForecastBundleResponse,
     BootstrapForecastRequest,
@@ -259,3 +260,83 @@ def run_backfill_historical(region: str, uow: UnitOfWorkDep) -> RunBackfillRespo
         raise http_error(400, "backfill_validation_failed", "Historical backfill failed.", exc) from exc
     except Exception as exc:
         raise http_error(500, "backfill_execution_failed", "Historical backfill failed.", exc) from exc
+
+
+@router.post("/backfill-agile-prices", response_model=BackfillAgilePricesResponse)
+def backfill_agile_prices(
+    uow: UnitOfWorkDep,
+    days: int = 730,  # Default 2 years
+    regions: list[str] | None = None,
+) -> BackfillAgilePricesResponse:
+    """
+    Deep backfill of historical Agile prices from Octopus API.
+    
+    Fetches ALL available historical Agile actual prices for specified regions
+    (or all 15 regions). This dramatically expands the training dataset by going
+    back as far as the Octopus API allows (potentially years of data).
+    
+    Args:
+        days: Number of days to backfill (default 730 = 2 years)
+        regions: List of regions to backfill (default: all 15 UK regions)
+    
+    Returns:
+        Summary of prices fetched and upserted
+    """
+    try:
+        now_utc = datetime.now(timezone.utc)
+        from_date = now_utc - timedelta(days=days)
+        to_date = now_utc + timedelta(days=2)  # Include forward-released prices
+        
+        # Default to all regions if not specified
+        if not regions:
+            regions = ["A", "B", "C", "D", "E", "F", "G", "H", "J", "K", "L", "M", "N", "P", "Q"]
+        
+        # Normalize regions
+        normalized_regions = [normalize_region(r) for r in regions]
+        
+        # Fetch prices for all regions
+        agile_prices_by_region = fetch_agile_prices_all_regions(
+            from_date=from_date,
+            to_date=to_date,
+            timeout=30,
+            regions=normalized_regions,
+        )
+        
+        # Flatten to upsert rows
+        agile_rows = []
+        for region, prices_dict in agile_prices_by_region.items():
+            for dt, price in prices_dict.items():
+                agile_rows.append({
+                    "date_time": dt,
+                    "region": region,
+                    "agile_actual": float(price),
+                })
+        
+        if agile_rows:
+            upsert_count = uow.agile_actual_writes.upsert_many(agile_rows)
+            uow.commit()
+            
+            # Find actual date range
+            all_dates = [row["date_time"] for row in agile_rows]
+            min_date = min(all_dates)
+            max_date = max(all_dates)
+            
+            return BackfillAgilePricesResponse(
+                regions_processed=normalized_regions,
+                total_prices_upserted=upsert_count,
+                period_start=min_date.isoformat(),
+                period_end=max_date.isoformat(),
+                detail=f"Successfully backfilled {upsert_count} Agile prices across {len(normalized_regions)} regions from {min_date.date()} to {max_date.date()}",
+            )
+        else:
+            return BackfillAgilePricesResponse(
+                regions_processed=normalized_regions,
+                total_prices_upserted=0,
+                period_start="",
+                period_end="",
+                detail="No Agile prices found for specified date range and regions",
+            )
+    except ValueError as exc:
+        raise http_error(400, "agile_backfill_validation_failed", "Agile backfill failed.", exc) from exc
+    except Exception as exc:
+        raise http_error(500, "agile_backfill_execution_failed", "Agile backfill failed.", exc) from exc
