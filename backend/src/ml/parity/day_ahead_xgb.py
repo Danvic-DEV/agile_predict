@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -10,8 +11,10 @@ from sklearn.model_selection import cross_val_score
 from sklearn.neighbors import KernelDensity
 from sqlalchemy import select
 
-from src.repositories.sql_models import ForecastDataORM, ForecastORM, PriceHistoryORM
+from src.repositories.sql_models import AgileActualORM, ForecastDataORM, ForecastORM, PriceHistoryORM
 from src.repositories.unit_of_work import UnitOfWork
+
+log = logging.getLogger(__name__)
 
 LEGACY_FEATURES: tuple[str, ...] = (
     "bm_wind",
@@ -229,6 +232,7 @@ def run_ml_day_ahead_forecast(
     max_days: int = 180,
     no_ranges: bool = False,
     use_gpu: bool = False,
+    training_region: str = "B",
 ) -> MlParityForecastOutput:
     # Load all forecasts but exclude seed/bootstrap forecasts from training
     all_forecasts = uow.session.execute(select(ForecastORM).order_by(ForecastORM.created_at.asc())).scalars().all()
@@ -252,9 +256,49 @@ def run_ml_day_ahead_forecast(
     if len(forecast_data) < 50:
         raise ValueError("insufficient forecast data rows for ML training")
 
-    prices = uow.session.execute(select(PriceHistoryORM)).scalars().all()
-    if len(prices) < 50:
+    # Load actual Agile prices (primary training target - real-world outcomes)
+    agile_actuals = uow.session.execute(
+        select(AgileActualORM).where(AgileActualORM.region == training_region.upper())
+    ).scalars().all()
+    
+    # Load Nordpool day-ahead prices (fallback for periods without Agile actuals)
+    nordpool_prices = uow.session.execute(select(PriceHistoryORM)).scalars().all()
+    
+    # Build combined price dataframe - prefer Agile actuals, fall back to Nordpool
+    agile_df = _to_dataframe(agile_actuals, ["date_time", "price_inc_vat"]) if agile_actuals else pd.DataFrame()
+    nordpool_df = _to_dataframe(nordpool_prices, ["date_time", "day_ahead"]) if nordpool_prices else pd.DataFrame()
+    
+    if agile_df.empty and nordpool_df.empty:
         raise ValueError("insufficient price history rows for ML training")
+    
+    agile_count = 0
+    nordpool_count = 0
+    
+    prices_df = pd.DataFrame()
+    if not agile_df.empty:
+        agile_df["date_time"] = pd.to_datetime(agile_df["date_time"], utc=True)
+        agile_df = agile_df.set_index("date_time").sort_index()
+        prices_df["day_ahead"] = agile_df["price_inc_vat"]
+        agile_count = len(agile_df)
+    
+    if not nordpool_df.empty:
+        nordpool_df["date_time"] = pd.to_datetime(nordpool_df["date_time"], utc=True)  
+        nordpool_df = nordpool_df.set_index("date_time").sort_index()
+        if prices_df.empty:
+            prices_df["day_ahead"] = nordpool_df["day_ahead"]
+            nordpool_count = len(nordpool_df)
+        else:
+            # Fill gaps in Agile data with Nordpool
+            before_fill = prices_df["day_ahead"].notna().sum()
+            prices_df["day_ahead"] = prices_df["day_ahead"].fillna(nordpool_df["day_ahead"])
+            nordpool_count = prices_df["day_ahead"].notna().sum() - before_fill
+    
+    prices_df = prices_df.dropna(subset=["day_ahead"]).drop_duplicates()
+    
+    log.info(
+        f"ML training using {agile_count} Agile actual prices (region {training_region}) "
+        f"+ {nordpool_count} Nordpool day-ahead prices = {len(prices_df)} total price points"
+    )
 
     ff = _to_dataframe(forecasts, ["id", "name", "created_at"]).set_index("id").sort_index()
     ff["created_at"] = pd.to_datetime(ff["created_at"], utc=True)
@@ -283,10 +327,6 @@ def run_ml_day_ahead_forecast(
         ],
     )
     fd["date_time"] = pd.to_datetime(fd["date_time"], utc=True)
-
-    prices_df = _to_dataframe(prices, ["date_time", "day_ahead"]).drop_duplicates(subset=["date_time"])
-    prices_df["date_time"] = pd.to_datetime(prices_df["date_time"], utc=True)
-    prices_df = prices_df.set_index("date_time").sort_index()
 
     df = fd.merge(ff[["created_at", "ag_start", "ag_end"]], right_index=True, left_on="forecast_id").set_index("date_time")
     df["weekend"] = (df.index.day_of_week >= 5).astype(int)
@@ -360,12 +400,6 @@ def run_ml_day_ahead_forecast(
     feature_frame = fc.reindex(columns=list(LEGACY_FEATURES)).astype(float)
     # Do NOT ffill/bfill - pass NaN to XGBoost which learned to handle missing values
     preds = pd.Series(_predict_with_dmatrix(model, feature_frame), index=fc.index, name="day_ahead").astype(float)
-    
-    # DEBUG: Log raw predictions to diagnose diversity issue
-    import logging
-    log = logging.getLogger(__name__)
-    log.warning(f"RAW MODEL PREDICTIONS (slots 200-220): {preds.iloc[200:220].tolist()}")
-    log.warning(f"INPUT FEATURES (slots 200-205):\n{feature_frame.iloc[200:205].to_string()}")
 
     range_mode = "fallback"
     lows = preds * 0.9
@@ -412,9 +446,6 @@ def run_ml_day_ahead_forecast(
         bridge_day_ahead=bridge_series,
     )
     blend_mode = "blend+bridge" if bridge_series is not None and not bridge_series.empty else "blend"
-    
-    # DEBUG: Log blended predictions to see if blending kills diversity
-    log.warning(f"BLENDED PREDICTIONS (slots 200-220): {preds.iloc[200:220].tolist()}")
     if range_mode == "kde":
         range_mode = f"kde+{blend_mode}"
     else:

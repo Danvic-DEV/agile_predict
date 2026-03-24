@@ -64,3 +64,13 @@ class RefreshFeedResponse(BaseModel):
     records_received: int
     refreshed_at: datetime
     detail: str
+
+
+class RunBackfillResponse(BaseModel):
+    status: str
+    region: str
+    period_start: str
+    period_end: str
+    forecasts_created: int
+    data_rows_created: int
+    detail: str

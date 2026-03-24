@@ -9,6 +9,7 @@ from src.api.errors import http_error
 from src.core.discord_notifications import send_update_failure_notification, send_update_started_notification
 from src.core.regions import normalize_region
 from src.domain.bootstrap_bundle import BootstrapBundleConfig, write_bootstrap_bundle
+from src.jobs.pipelines.backfill_historical import run_backfill_job
 from src.jobs.pipelines.update_forecast import run_update_forecast_job
 from src.core.feed_health import FEED_SOURCES
 from src.ml.ingest import fetch_day_ahead_prices
@@ -29,6 +30,7 @@ from src.schemas.admin_jobs import (
     BootstrapForecastRequest,
     BootstrapForecastResponse,
     RefreshFeedResponse,
+    RunBackfillResponse,
     RunUpdateJobResponse,
 )
 
@@ -230,3 +232,30 @@ def refresh_feed(source_id: str) -> RefreshFeedResponse:
         refreshed_at=refreshed_at,
         detail=f"Feed refresh completed for {source_id}.",
     )
+
+
+@router.post("/run-backfill-historical/{region}", response_model=RunBackfillResponse)
+def run_backfill_historical(region: str, uow: UnitOfWorkDep) -> RunBackfillResponse:
+    """
+    Backfill historical weather data paired with actual Agile prices.
+    
+    Creates forecast records representing historical weather snapshots,
+    dramatically expanding ML training dataset from ~144 to ~22,000+ price points.
+    """
+    try:
+        normalized_region = normalize_region(region)
+        result = run_backfill_job(uow=uow, region=normalized_region)
+        
+        return RunBackfillResponse(
+            status=result["status"],
+            region=result["region"],
+            period_start=result["period_start"],
+            period_end=result["period_end"],
+            forecasts_created=result["forecasts_created"],
+            data_rows_created=result["data_rows_created"],
+            detail=f"Backfill completed: {result['forecasts_created']} forecasts with {result['data_rows_created']} weather data rows",
+        )
+    except ValueError as exc:
+        raise http_error(400, "backfill_validation_failed", "Historical backfill failed.", exc) from exc
+    except Exception as exc:
+        raise http_error(500, "backfill_execution_failed", "Historical backfill failed.", exc) from exc
