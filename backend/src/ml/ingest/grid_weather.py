@@ -25,6 +25,13 @@ log = logging.getLogger(__name__)
 
 _UA = "Mozilla/5.0 (compatible; agile-predict)"
 _TIMEOUT = 30
+_ELEXON_INDO_RETENTION = pd.Timedelta("30D")
+_NESO_HISTORIC_DEMAND_RESOURCES = {
+    2023: "bf5ab335-9b40-4ea4-b93a-ab4af7bce003",
+    2024: "f6d02c0f-957b-48cb-82ee-09003f2ba759",
+    2025: "b2bde559-3455-4021-b179-dfe60c0337b0",
+    2026: "8a4a771c-3929-4e56-93ad-cdf13219dea5",
+}
 
 
 def _validate_series(
@@ -138,20 +145,61 @@ def _fetch_elexon_ndf_forecast() -> pd.Series:
         return pd.Series(dtype=float)
 
 
+def _fetch_neso_historic_demand(start_dt: pd.Timestamp) -> pd.Series:
+    """Historical demand from NESO yearly datasets."""
+    frames: list[pd.Series] = []
+    current_year = datetime.now(timezone.utc).year
+
+    for year in sorted(_NESO_HISTORIC_DEMAND_RESOURCES):
+        if year < start_dt.year or year > current_year:
+            continue
+
+        resource_id = _NESO_HISTORIC_DEMAND_RESOURCES[year]
+        year_start = max(start_dt, pd.Timestamp(f"{year}-01-01", tz="UTC"))
+        year_end = pd.Timestamp(f"{year + 1}-01-01", tz="UTC")
+        where_clause = (
+            f'"SETTLEMENT_DATE" >= \'{year_start.strftime("%Y-%m-%d")}\''
+            f' AND "SETTLEMENT_DATE" < \'{year_end.strftime("%Y-%m-%d")}\''
+        )
+
+        try:
+            df = _neso_sql(resource_id, where_clause)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("NESO demand resource %s failed: %s", resource_id, exc)
+            continue
+
+        if df.empty:
+            continue
+
+        df.index = pd.to_datetime(df["SETTLEMENT_DATE"], utc=True) + (
+            df["SETTLEMENT_PERIOD"].astype(int) - 1
+        ) * pd.Timedelta("30min")
+        frames.append(df["ND"].astype(float).sort_index())
+
+    if not frames:
+        return pd.Series(dtype=float)
+
+    series = pd.concat(frames).sort_index()
+    series = series[~series.index.duplicated(keep="last")]
+    return series.resample("30min").mean().interpolate()
+
+
 def _fetch_neso_demand(start_date: str) -> pd.Series:
     """Demand series using INDO actuals plus NDF future forecast when available."""
+    try:
+        requested_start = pd.Timestamp(start_date, tz="UTC")
+    except Exception:
+        requested_start = pd.Timestamp.now(tz="UTC") - _ELEXON_INDO_RETENTION
+
     actual_series = pd.Series(dtype=float)
     try:
         url = "https://data.elexon.co.uk/bmrs/api/v1/datasets/INDO"
-        # Use provided start_date, default to 27 days ago if parsing fails
-        try:
-            start_dt = pd.Timestamp(start_date, tz='UTC')
-        except Exception:
-            start_dt = pd.Timestamp.now(tz='UTC') - pd.Timedelta("27D")
-        
+        recent_cutoff = pd.Timestamp.now(tz="UTC") - _ELEXON_INDO_RETENTION
+        start_dt = max(requested_start, recent_cutoff)
+
         params = {
-            "publishDateTimeFrom": start_dt.strftime("%Y-%m-%d"),
-            "publishDateTimeTo": (pd.Timestamp.now(tz='UTC') + pd.Timedelta("1D")).strftime("%Y-%m-%d"),
+            "startTimeFrom": start_dt.strftime("%Y-%m-%dT%H:%MZ"),
+            "startTimeTo": (pd.Timestamp.now(tz="UTC") + pd.Timedelta("1D")).strftime("%Y-%m-%dT%H:%MZ"),
             "format": "json",
         }
         data = _retry(lambda: _get_json(url, params))
@@ -175,8 +223,12 @@ def _fetch_neso_demand(start_date: str) -> pd.Series:
 
     forecast_series = _fetch_elexon_ndf_forecast()
 
-    if not actual_series.empty or not forecast_series.empty:
-        combined = actual_series.combine_first(forecast_series).sort_index()
+    historic_series = _fetch_neso_historic_demand(requested_start)
+
+    combined = actual_series.combine_first(historic_series)
+    combined = combined.combine_first(forecast_series).sort_index()
+
+    if not combined.empty:
         status, issues, metrics = _validate_series(combined, min_rows=24, min_value=0.0, max_value=100000.0)
         record_feed_success(
             "neso_demand",
@@ -187,36 +239,7 @@ def _fetch_neso_demand(start_date: str) -> pd.Series:
         )
         return combined
 
-    # Fallback: NESO historic demand datasets (by year)
-    # Try recent years in reverse order to get most current data
-    for rid in (
-        "8a4a771c-3929-4e56-93ad-cdf13219dea5",  # 2026
-        "b2bde559-3455-4021-b179-dfe60c0337b0",  # 2025
-        "f6d02c0f-957b-48cb-82ee-09003f2ba759",  # 2024
-        "bf5ab335-9b40-4ea4-b93a-ab4af7bce003",  # 2023
-    ):
-        try:
-            df = _neso_sql(rid, f'"SETTLEMENT_DATE" >= \'{start_date}\'')
-            if df.empty:
-                continue
-            df.index = pd.to_datetime(df["SETTLEMENT_DATE"], utc=True) + (
-                df["SETTLEMENT_PERIOD"].astype(int) - 1
-            ) * pd.Timedelta("30min")
-            series = df["ND"].astype(float).sort_index()
-            series = series.resample("30min").mean().interpolate()
-            status, issues, metrics = _validate_series(series, min_rows=24, min_value=0.0, max_value=100000.0)
-            record_feed_success(
-                "neso_demand",
-                records_received=len(series),
-                validation_status=status,
-                validation_issues=issues,
-                validation_metrics=metrics,
-            )
-            return series
-        except Exception as exc2:  # noqa: BLE001
-            log.warning("NESO demand resource %s failed: %s", rid, exc2)
-
-            record_feed_error("neso_demand", "all NESO/Elexon demand sources failed")
+    record_feed_error("neso_demand", "all NESO/Elexon demand sources failed")
     return pd.Series(dtype=float)
 
 
