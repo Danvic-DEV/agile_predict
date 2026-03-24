@@ -18,12 +18,17 @@ log = logging.getLogger(__name__)
 
 LEGACY_FEATURES: tuple[str, ...] = (
     "bm_wind",
+    "emb_wind",
     "solar",
     "demand",
     "peak",
     "days_ago",
     "wind_10m",
     "weekend",
+    "temp_2m",
+    "rad",
+    "sin_hour",
+    "cos_hour",
 )
 
 
@@ -177,6 +182,8 @@ def check_ml_training_readiness(
     df["time"] = df.index.tz_convert("GB").hour + df.index.minute / 60
     df["days_ago"] = (pd.Timestamp.now(tz="UTC") - df["created_at"]).dt.total_seconds() / 3600 / 24
     df["peak"] = ((df["time"] >= 16) & (df["time"] < 19)).astype(float)
+    df["sin_hour"] = np.sin(2 * np.pi * df["time"] / 24)
+    df["cos_hour"] = np.cos(2 * np.pi * df["time"] / 24)
 
     train_df = df[df["forecast_id"].isin(ff_train.index)]
     train_df = train_df[train_df["days_ago"] < max_days]
@@ -302,6 +309,8 @@ def run_ml_day_ahead_forecast(
     df["days_ago"] = (pd.Timestamp.now(tz="UTC") - df["created_at"]).dt.total_seconds() / 3600 / 24
     df["dt"] = (df.index - df["created_at"]).dt.total_seconds() / 3600 / 24
     df["peak"] = ((df["time"] >= 16) & (df["time"] < 19)).astype(float)
+    df["sin_hour"] = np.sin(2 * np.pi * df["time"] / 24)
+    df["cos_hour"] = np.cos(2 * np.pi * df["time"] / 24)
 
     train_df = df[df["forecast_id"].isin(ff_train.index)]
     train_df = train_df[train_df["days_ago"] < max_days]
@@ -364,6 +373,8 @@ def run_ml_day_ahead_forecast(
     fc["time"] = fc.index.tz_convert("GB").hour + fc.index.minute / 60
     fc["dt"] = (fc.index - now_utc).total_seconds() / 86400
     fc["peak"] = ((fc["time"] >= 16) & (fc["time"] < 19)).astype(float)
+    fc["sin_hour"] = np.sin(2 * np.pi * fc["time"] / 24)
+    fc["cos_hour"] = np.cos(2 * np.pi * fc["time"] / 24)
 
     feature_frame = fc.reindex(columns=list(LEGACY_FEATURES)).astype(float)
     # Do NOT ffill/bfill - pass NaN to XGBoost which learned to handle missing values
