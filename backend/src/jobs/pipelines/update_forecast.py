@@ -319,7 +319,7 @@ def run_update_forecast_job(uow: UnitOfWork) -> ForecastRunResult:
                 {
                     "date_time": dt,
                     "day_ahead": float(price),
-                    "agile": float(price),  # placeholder; actual agile filled by history if available
+                    "agile": float(price),
                 }
                 for dt, price in raw_prices.items()
             ]

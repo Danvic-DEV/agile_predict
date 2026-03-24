@@ -280,7 +280,7 @@ def run_ml_day_ahead_forecast(
             raise ValueError("agile_actual column missing from AgileActualORM training data")
         agile_df["date_time"] = pd.to_datetime(agile_df["date_time"], utc=True)
         agile_df = agile_df.set_index("date_time").sort_index()
-        prices_df["day_ahead"] = agile_df["agile_actual"]
+        prices_df["day_ahead"] = agile_df["agile_actual"] * 10.0  # p/kWh → £/MWh to match Nordpool training scale
         agile_count = len(agile_df)
     
     if not nordpool_df.empty:
