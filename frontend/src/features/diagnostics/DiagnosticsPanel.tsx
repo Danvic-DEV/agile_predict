@@ -561,7 +561,10 @@ export function DiagnosticsPanel() {
   const trendHasData = growthSnapshots.length >= 2;
 
   const trustedCustomerForecastAvailable =
-    data?.update_source === "ml" && data?.update_ml_write_mode === "ml" && !data?.training_mode;
+    (data?.update_source === "ml" || data?.update_source === "ml:partial-horizon") &&
+    data?.update_ml_write_mode === "ml" &&
+    !data?.training_mode &&
+    !data?.update_ml_error;
 
   const customerAvailabilityVerdict: { state: "pass" | "fail" | "pending"; title: string; detail: string } = (() => {
     if (loadingDiagnostics || !data) {
@@ -1156,6 +1159,14 @@ export function DiagnosticsPanel() {
                   <span className="label">Partial Horizon Mode</span>
                   <strong>{data.allow_partial_forecast_horizon ? "enabled" : "disabled"}</strong>
                 </div>
+                {data.update_partial_horizon_warning && (
+                  <div>
+                    <span className="label">Horizon Warning</span>
+                    <strong style={{ color: "var(--color-warn, #b45309)", fontWeight: "normal" }}>
+                      {data.update_partial_horizon_warning}
+                    </strong>
+                  </div>
+                )}
                 <div>
                   <span className="label">Training Rows</span>
                   <strong>{data.update_ml_training_rows ?? "n/a"}</strong>

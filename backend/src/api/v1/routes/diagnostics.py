@@ -225,6 +225,7 @@ def latest_summary(uow: UnitOfWorkDep) -> LatestForecastDiagnostics:
         update_interpolated_points=update_state.get("interpolated_points"),
         update_retries_used=update_state.get("retries_used"),
         update_ml_error=update_state.get("ml_error"),
+        update_partial_horizon_warning=update_state.get("partial_horizon_warning"),
         update_ml_training_rows=update_state.get("ml_training_rows"),
         update_ml_test_rows=update_state.get("ml_test_rows"),
         update_ml_cv_mean_rmse=update_state.get("ml_cv_mean_rmse"),

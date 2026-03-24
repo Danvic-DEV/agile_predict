@@ -205,8 +205,9 @@ def run_update_forecast_job(uow: UnitOfWork) -> ForecastRunResult:
         day_ahead_high_values = None
         source = pipeline.source
 
+    partial_horizon_warning: str | None = None
     if forward_feature_warning is not None:
-        ml_error = f"{ml_error}; {forward_feature_warning}" if ml_error else forward_feature_warning
+        partial_horizon_warning = forward_feature_warning
         source = f"{source}:partial-horizon"
 
     feature_rows = [
@@ -426,6 +427,7 @@ def run_update_forecast_job(uow: UnitOfWork) -> ForecastRunResult:
         interpolated_points=pipeline.interpolated_points,
         retries_used=pipeline.retries_used,
         ml_error=ml_error,
+        partial_horizon_warning=partial_horizon_warning,
         ml_training_rows=ml_training_rows,
         ml_test_rows=ml_test_rows,
         ml_cv_mean_rmse=ml_cv_mean_rmse,

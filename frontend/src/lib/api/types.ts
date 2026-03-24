@@ -42,6 +42,7 @@ export interface LatestForecastDiagnostics {
   update_interpolated_points: number | null;
   update_retries_used: number | null;
   update_ml_error: string | null;
+  update_partial_horizon_warning: string | null;
   update_ml_training_rows: number | null;
   update_ml_test_rows: number | null;
   update_ml_cv_mean_rmse: number | null;

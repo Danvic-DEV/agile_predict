@@ -1,11 +1,26 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any, cast
+import pandas as pd
 import pytest
 
 from src.domain.forecast_pipeline import ForecastPipelineOutput
 from src.ml.parity.day_ahead_xgb import MlParityForecastOutput
 from src.jobs.pipelines import update_forecast
+
+
+def _make_feature_df(n: int = 3) -> pd.DataFrame:
+    """Minimal DataFrame with all columns consumed by update_forecast."""
+    cols = ["bm_wind", "solar", "emb_wind", "demand", "temp_2m", "wind_10m", "rad"]
+    idx = pd.date_range(
+        start=datetime.now(timezone.utc).replace(second=0, microsecond=0),
+        periods=n,
+        freq="30min",
+        tz="UTC",
+    )
+    data = {c: [0.0] * n for c in cols}
+    return pd.DataFrame(data, index=idx)
 
 
 class _FakeResult:
@@ -23,6 +38,19 @@ class _FakeUow:
 def _stub_ml_readiness(monkeypatch) -> None:
     monkeypatch.setattr(update_forecast, "check_ml_training_readiness", lambda **kwargs: (False, None))
     monkeypatch.setattr(update_forecast, "fetch_agile_prices_all_regions", lambda **kwargs: {})
+    monkeypatch.setattr(update_forecast, "prune_update_job_forecasts", lambda **kwargs: 0)
+    monkeypatch.setattr(update_forecast, "fetch_live_forecast_features", lambda **kwargs: _make_feature_df(3))
+    monkeypatch.setattr(update_forecast, "fetch_grid_weather_features", lambda **kwargs: _make_feature_df(3))
+    monkeypatch.setattr(update_forecast, "write_history_forecast", lambda **kwargs: None)
+    monkeypatch.setattr(update_forecast, "fetch_day_ahead_prices", lambda **kwargs: None)
+    monkeypatch.setattr(update_forecast, "fetch_system_context_features", lambda **kwargs: _make_feature_df(3))
+    monkeypatch.setattr(update_forecast, "send_update_success_notification", lambda **kwargs: None)
+    monkeypatch.setattr(update_forecast, "send_daily_digest_notification", lambda **kwargs: None)
+    monkeypatch.setattr(update_forecast, "send_gpu_alert_notification", lambda **kwargs: None)
+    monkeypatch.setattr(update_forecast, "send_parity_alert_notification", lambda **kwargs: None)
+    monkeypatch.setattr(update_forecast, "send_pipeline_staleness_alert_notification", lambda **kwargs: None)
+    from src.ml.gpu_support import GpuProbeResult
+    monkeypatch.setattr(update_forecast, "probe_xgboost_cuda", lambda: GpuProbeResult(tested=False, compatible=False, reason="stubbed", xgboost_version="0", gpu_name=None, tested_at=""))
 
 
 def test_run_update_forecast_job_passes_day_ahead_values_into_bundle(monkeypatch) -> None:

@@ -26,6 +26,7 @@ class LatestForecastDiagnostics(BaseModel):
     update_interpolated_points: int | None
     update_retries_used: int | None
     update_ml_error: str | None
+    update_partial_horizon_warning: str | None = None
     update_ml_training_rows: int | None
     update_ml_test_rows: int | None
     update_ml_cv_mean_rmse: float | None
