@@ -6,6 +6,15 @@ and pairs it with actual Agile prices to create rich training dataset.
 
 This solves the overfitting problem caused by training on only 6 days
 of Nordpool data when we have 5+ weeks of actual Agile price history.
+
+NESO API Limitations:
+- Data availability varies by dataset (typically 30-90 days historical)
+- INDO demand: ~30 days
+- BM Wind: ~90 days via SQL query limit
+- Solar/Wind: ~90 days via SQL query limit
+- Open-Meteo archive: Years of historical weather data
+
+Backfill is idempotent - safe to re-run periodically to extend historical coverage.
 """
 from __future__ import annotations
 
@@ -34,10 +43,13 @@ def fetch_historical_weather(start_date: str, end_date: str | None = None) -> pd
     
     Returns DataFrame with columns: bm_wind, solar, emb_wind, demand, temp_2m, wind_10m, rad
     Indexed by UTC datetime with 30-minute frequency.
+    
+    Note: NESO APIs may not return full requested range for older dates.
+    The function will return whatever data is available.
     """
     log.info(f"Fetching historical weather data from {start_date} to {end_date or 'now'}")
     
-    # Fetch historical grid data from NESO
+    # Fetch historical grid data from NESO (gracefully handles missing data)
     bm_wind = _fetch_neso_bm_wind(start_date)
     solar_wind_df = _fetch_neso_solar_wind(start_date)
     demand = _fetch_neso_demand(start_date)
@@ -46,11 +58,22 @@ def fetch_historical_weather(start_date: str, end_date: str | None = None) -> pd
     df = pd.DataFrame(index=pd.DatetimeIndex([], tz='UTC'))
     if not bm_wind.empty:
         df['bm_wind'] = bm_wind
+        log.info(f"  BM Wind: {len(bm_wind)} rows from {bm_wind.index.min()} to {bm_wind.index.max()}")
+    else:
+        log.warning(f"  BM Wind: No data available for {start_date}")
+        
     if not solar_wind_df.empty:
         df['solar'] = solar_wind_df['solar']
         df['emb_wind'] = solar_wind_df['total_wind'] - bm_wind if not bm_wind.empty else solar_wind_df['total_wind']
+        log.info(f"  Solar/Wind: {len(solar_wind_df)} rows from {solar_wind_df.index.min()} to {solar_wind_df.index.max()}")
+    else:
+        log.warning(f"  Solar/Wind: No data available for {start_date}")
+        
     if not demand.empty:
         df['demand'] = demand
+        log.info(f"  Demand: {len(demand)} rows from {demand.index.min()} to {demand.index.max()}")
+    else:
+        log.warning(f"  Demand: No data available for {start_date}")
     
     # Fetch historical weather from Open-Meteo
     try:
@@ -59,11 +82,31 @@ def fetch_historical_weather(start_date: str, end_date: str | None = None) -> pd
             for col in ['temp_2m', 'wind_10m', 'rad']:
                 if col in weather_df.columns:
                     df[col] = weather_df[col]
+            log.info(f"  Open-Meteo: {len(weather_df)} rows from {weather_df.index.min()} to {weather_df.index.max()}")
+        else:
+            log.warning(f"  Open-Meteo: No weather data available")
     except Exception as exc:
-        log.warning(f"Open-Meteo historical fetch failed: {exc}")
+        log.warning(f"  Open-Meteo: Fetch failed - {exc}")
     
     # Fill forward gaps (historical data may have some missing periods)
     df = df.sort_index().ffill().bfill()
+    
+    if df.empty:
+        log.error(f"No historical weather data retrieved for {start_date} to {end_date}")
+    else:
+        actual_start = df.index.min()
+        actual_end = df.index.max()
+        requested_start = pd.Timestamp(start_date, tz='UTC')
+        requested_end = pd.Timestamp(end_date or datetime.now(timezone.utc).strftime("%Y-%m-%d"), tz='UTC')
+        
+        if actual_start > requested_start:
+            days_gap = (actual_start - requested_start).days
+            log.warning(
+                f"Weather data starts {days_gap} days later than requested "
+                f"(requested: {start_date}, available from: {actual_start.date()})"
+            )
+    
+    log.info(f"Final weather dataset: {len(df)} rows, {len(df.columns)} columns")
     
     log.info(f"Fetched {len(df)} historical weather rows from {df.index.min()} to {df.index.max()}")
     return df

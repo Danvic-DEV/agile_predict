@@ -143,9 +143,15 @@ def _fetch_neso_demand(start_date: str) -> pd.Series:
     actual_series = pd.Series(dtype=float)
     try:
         url = "https://data.elexon.co.uk/bmrs/api/v1/datasets/INDO"
+        # Use provided start_date, default to 27 days ago if parsing fails
+        try:
+            start_dt = pd.Timestamp(start_date, tz='UTC')
+        except Exception:
+            start_dt = pd.Timestamp.now(tz='UTC') - pd.Timedelta("27D")
+        
         params = {
-            "publishDateTimeFrom": (pd.Timestamp.now() - pd.Timedelta("27D")).strftime("%Y-%m-%d"),
-            "publishDateTimeTo": (pd.Timestamp.now() + pd.Timedelta("1D")).strftime("%Y-%m-%d"),
+            "publishDateTimeFrom": start_dt.strftime("%Y-%m-%d"),
+            "publishDateTimeTo": (pd.Timestamp.now(tz='UTC') + pd.Timedelta("1D")).strftime("%Y-%m-%d"),
             "format": "json",
         }
         data = _retry(lambda: _get_json(url, params))
@@ -214,9 +220,16 @@ def _fetch_neso_demand(start_date: str) -> pd.Series:
 def _fetch_neso_bm_wind(start_date: str) -> pd.Series:
     """BM wind incentive forecast from NESO."""
     try:
+        # Normalize start_date to ensure proper format
+        try:
+            start_dt = pd.Timestamp(start_date, tz='UTC')
+            start_str = start_dt.strftime("%Y-%m-%d")
+        except Exception:
+            start_str = start_date
+        
         df = _neso_sql(
             "7524ec65-f782-4258-aaf8-5b926c17b966",
-            f'"Datetime_GMT" >= \'{start_date}T00:00:00Z\'',
+            f'"Datetime_GMT" >= \'{start_str}T00:00:00Z\'',
             limit=40000,
         )
         df.index = pd.to_datetime(df["Datetime_GMT"], utc=True)
@@ -314,9 +327,16 @@ def _fetch_neso_national_demand_forecast() -> pd.Series:
 def _fetch_neso_solar_wind(start_date: str) -> pd.DataFrame:
     """Embedded solar and wind from NESO."""
     try:
+        # Normalize start_date to ensure proper format
+        try:
+            start_dt = pd.Timestamp(start_date, tz='UTC')
+            start_str = start_dt.strftime("%Y-%m-%d")
+        except Exception:
+            start_str = start_date
+        
         df = _neso_sql(
             "f93d1835-75bc-43e5-84ad-12472b180a98",
-            f'"DATETIME" >= \'{start_date}\'',
+            f'"DATETIME" >= \'{start_str}\'',
             limit=20000,
         )
         df.index = pd.to_datetime(df["DATETIME"], utc=True)
