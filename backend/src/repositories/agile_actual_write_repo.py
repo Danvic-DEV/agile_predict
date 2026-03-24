@@ -10,6 +10,9 @@ from sqlalchemy.orm import Session
 from src.repositories.sql_models import AgileActualORM
 
 
+_UPSERT_BATCH_SIZE = 5000
+
+
 class AgileActualWriteRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
@@ -22,14 +25,19 @@ class AgileActualWriteRepository:
         if not rows:
             return 0
 
-        stmt = (
-            insert(AgileActualORM)
-            .values(rows)
-            .on_conflict_do_update(
-                index_elements=["date_time", "region"],
-                set_={"agile_actual": insert(AgileActualORM).excluded.agile_actual},
+        total_rowcount = 0
+        for start in range(0, len(rows), _UPSERT_BATCH_SIZE):
+            batch = rows[start : start + _UPSERT_BATCH_SIZE]
+            stmt = (
+                insert(AgileActualORM)
+                .values(batch)
+                .on_conflict_do_update(
+                    index_elements=["date_time", "region"],
+                    set_={"agile_actual": insert(AgileActualORM).excluded.agile_actual},
+                )
             )
-        )
-        result = self.session.execute(stmt)
+            result = self.session.execute(stmt)
+            total_rowcount += int(result.rowcount or 0)
+
         self.session.flush()
-        return int(result.rowcount or 0)
+        return total_rowcount
