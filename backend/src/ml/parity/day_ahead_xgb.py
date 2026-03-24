@@ -265,7 +265,7 @@ def run_ml_day_ahead_forecast(
     nordpool_prices = uow.session.execute(select(PriceHistoryORM)).scalars().all()
     
     # Build combined price dataframe - prefer Agile actuals, fall back to Nordpool
-    agile_df = _to_dataframe(agile_actuals, ["date_time", "price_inc_vat"]) if agile_actuals else pd.DataFrame()
+    agile_df = _to_dataframe(agile_actuals, ["date_time", "agile_actual"]) if agile_actuals else pd.DataFrame()
     nordpool_df = _to_dataframe(nordpool_prices, ["date_time", "day_ahead"]) if nordpool_prices else pd.DataFrame()
     
     if agile_df.empty and nordpool_df.empty:
@@ -276,9 +276,11 @@ def run_ml_day_ahead_forecast(
     
     prices_df = pd.DataFrame()
     if not agile_df.empty:
+        if "agile_actual" not in agile_df.columns:
+            raise ValueError("agile_actual column missing from AgileActualORM training data")
         agile_df["date_time"] = pd.to_datetime(agile_df["date_time"], utc=True)
         agile_df = agile_df.set_index("date_time").sort_index()
-        prices_df["day_ahead"] = agile_df["price_inc_vat"]
+        prices_df["day_ahead"] = agile_df["agile_actual"]
         agile_count = len(agile_df)
     
     if not nordpool_df.empty:
