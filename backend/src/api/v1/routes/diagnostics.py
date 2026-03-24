@@ -43,6 +43,12 @@ from src.schemas.diagnostics import (
     PipelineStageStatus,
     SourceCollectionStatus,
 )
+from src.schemas.training_health import (
+    DataSourceBreakdown,
+    TrainingDataAlert,
+    TrainingDataHealthResponse,
+    WeatherCoverageInfo,
+)
 
 router = APIRouter()
 REPO_ROOT = Path(__file__).resolve().parents[5]
@@ -994,4 +1000,166 @@ def forecast_accuracy_measurement(uow: UnitOfWorkDep, region: str = "G", days: i
         matched_points=len(matched_points),
         data_coverage_percent=round(len(matched_points) / max(len(forecast_rows), 1) * 100.0, 2),
         sample_points=matched_points[:5],
+    )
+
+
+@router.get("/training-data-health/{region}", response_model=TrainingDataHealthResponse)
+def get_training_data_health(region: str, uow: UnitOfWorkDep) -> TrainingDataHealthResponse:
+    """
+    Comprehensive training data health check for operator visibility.
+    
+    Provides actionable alerts and recommendations about ML training data quality,
+    coverage gaps, and specific steps to improve model performance.
+    """
+    now_utc = datetime.now(timezone.utc)
+    region_upper = region.upper()
+    
+    # Get Agile actual prices
+    agile_actuals = uow.session.execute(
+        select(AgileActualORM.date_time)
+        .where(AgileActualORM.region == region_upper)
+        .order_by(AgileActualORM.date_time.asc())
+    ).scalars().all()
+    
+    # Get Nordpool day-ahead prices  
+    nordpool_prices = uow.session.execute(
+        select(PriceHistoryORM.date_time)
+        .order_by(PriceHistoryORM.date_time.asc())
+    ).scalars().all()
+    
+    # Calculate price data breakdown
+    agile_count = len(agile_actuals)
+    nordpool_count = len(nordpool_prices)
+    total_count = agile_count + nordpool_count
+    agile_percent = (agile_count / total_count * 100.0) if total_count > 0 else 0.0
+    
+    price_earliest = min(agile_actuals) if agile_actuals else None
+    price_latest = max(agile_actuals) if agile_actuals else None
+    price_days = (price_latest - price_earliest).days + 1 if price_earliest and price_latest else 0
+    
+    price_data = DataSourceBreakdown(
+        agile_actual_count=agile_count,
+        nordpool_count=nordpool_count,
+        total_count=total_count,
+        agile_percent=round(agile_percent, 1),
+        earliest_date=price_earliest,
+        latest_date=price_latest,
+        coverage_days=price_days,
+    )
+    
+    # Get backfill forecast count and weather coverage
+    backfill_forecasts = uow.session.execute(
+        select(func.count(ForecastORM.id))
+        .where(ForecastORM.name.like("backfill::%"))
+    ).scalar_one()
+    
+    weather_dates = uow.session.execute(
+        select(ForecastDataORM.date_time)
+        .join(ForecastORM, ForecastDataORM.forecast_id == ForecastORM.id)
+        .where(ForecastORM.name.like("backfill::%"))
+        .order_by(ForecastDataORM.date_time.asc())
+    ).scalars().all()
+    
+    weather_earliest = min(weather_dates) if weather_dates else None
+    weather_latest = max(weather_dates) if weather_dates else None
+    weather_days = (weather_latest - weather_earliest).days + 1 if weather_earliest and weather_latest else 0
+    
+    # Calculate gap between Agile and weather coverage
+    agile_without_weather_days = 0
+    if price_earliest and weather_earliest and price_earliest < weather_earliest:
+        agile_without_weather_days = (weather_earliest - price_earliest).days
+    
+    weather_coverage = WeatherCoverageInfo(
+        backfill_forecasts=backfill_forecasts,
+        earliest_weather=weather_earliest,
+        latest_weather=weather_latest,
+        coverage_days=weather_days,
+        agile_without_weather_days=agile_without_weather_days,
+    )
+    
+    # Get total forecast count and estimate training points
+    total_forecasts = uow.session.execute(select(func.count(ForecastORM.id))).scalar_one()
+    
+    # Estimate training points (conservative: weather days × 48 slots/day × 50% overlap)
+    estimated_training_points = min(weather_days * 48 * 0.5, agile_count) if weather_days > 0 else nordpool_count
+    estimated_training_points = int(estimated_training_points)
+    
+    min_threshold = settings.min_training_points_warning
+    meets_threshold = estimated_training_points >= min_threshold
+    
+    # Determine health status
+    alerts = []
+    recommendations = []
+    
+    if estimated_training_points < 500:
+        health_status = "critical"
+        health_summary = f"Critical: Only {estimated_training_points} training points (need {min_threshold}+)"
+        alerts.append(TrainingDataAlert(
+            severity="critical",
+            title="Insufficient Training Data",
+            message=f"Only {estimated_training_points} training points available. Model will severely overfit.",
+            impact="Poor day 3+ predictions, repeating values, ignoring weather features",
+            fix_action="Run historical backfill immediately",
+            fix_endpoint=f"/api/v1/admin-jobs/run-backfill-historical/{region}",
+        ))
+        recommendations.append("Run backfill to populate historical weather data")
+        recommendations.append("Verify Agile actual prices are being collected daily")
+        
+    elif estimated_training_points < min_threshold:
+        health_status = "degraded"
+        health_summary = f"Degraded: {estimated_training_points} training points (recommend {min_threshold}+)"
+        alerts.append(TrainingDataAlert(
+            severity="warning",
+            title="Low Training Data Quality",
+            message=f"{estimated_training_points} training points available. More data recommended for optimal performance.",
+            impact="Moderate prediction accuracy, some overfitting to simple patterns",
+            fix_action="Run backfill to extend historical coverage",
+            fix_endpoint=f"/api/v1/admin-jobs/run-backfill-historical/{region}",
+        ))
+        recommendations.append("Run backfill to improve model quality")
+        
+    else:
+        health_status = "healthy"
+        health_summary = f"Healthy: {estimated_training_points} training points available"
+    
+    # Check for Agile prices without weather
+    if agile_without_weather_days > 0:
+        alerts.append(TrainingDataAlert(
+            severity="warning",
+            title="Weather Data Gap",
+            message=f"{agile_without_weather_days} days of Agile prices lack weather data (NESO API historical limit)",
+            impact="Missing training examples from earlier period",
+            fix_action="Gap is expected due to NESO API limits. No action required.",
+            fix_endpoint=None,
+        ))
+        recommendations.append(f"Weather data starts {agile_without_weather_days} days after Agile prices (API limit)")
+    
+    # Check if using mostly Nordpool instead of Agile
+    if agile_percent < 50 and agile_count > 0:
+        alerts.append(TrainingDataAlert(
+            severity="warning",
+            title="Nordpool Proxy Data Dominant",
+            message=f"Only {agile_percent:.1f}% of training uses actual Agile prices",
+            impact="Model trained on proxy data, not real customer prices",
+            fix_action="Ensure Agile actual prices are being collected daily",
+            fix_endpoint=None,
+        ))
+        recommendations.append("Verify agile_octopus feed is healthy and collecting prices")
+    
+    if not recommendations:
+        recommendations.append("Training data health is optimal. Continue monitoring.")
+    
+    return TrainingDataHealthResponse(
+        generated_at=now_utc,
+        region=region_upper,
+        health_status=health_status,
+        health_summary=health_summary,
+        price_data=price_data,
+        weather_coverage=weather_coverage,
+        training_points=estimated_training_points,
+        forecast_count=total_forecasts,
+        meets_minimum_threshold=meets_threshold,
+        minimum_threshold=min_threshold,
+        alerts=alerts,
+        recommendations=recommendations,
     )

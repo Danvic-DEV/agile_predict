@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     auto_update_enabled: bool = Field(default=True, alias="AUTO_UPDATE_ENABLED")
     auto_update_interval_seconds: int = Field(default=14400, alias="AUTO_UPDATE_INTERVAL_SECONDS")  # 4 hours
     auto_update_run_immediately: bool = Field(default=False, alias="AUTO_UPDATE_RUN_IMMEDIATELY")
+    auto_backfill_enabled: bool = Field(default=True, alias="AUTO_BACKFILL_ENABLED")
+    auto_backfill_on_startup: bool = Field(default=True, alias="AUTO_BACKFILL_ON_STARTUP")
+    auto_backfill_check_interval_seconds: int = Field(default=86400, alias="AUTO_BACKFILL_CHECK_INTERVAL_SECONDS")  # Daily
+    auto_backfill_regions: str = Field(default="B", alias="AUTO_BACKFILL_REGIONS")
+    min_training_points_warning: int = Field(default=1000, alias="MIN_TRAINING_POINTS_WARNING")
     ml_write_mode: str = Field(default="deterministic", alias="ML_WRITE_MODE")
     allow_ingest_fallback: bool = Field(default=False, alias="ALLOW_INGEST_FALLBACK")
     allow_ml_fallback: bool = Field(default=False, alias="ALLOW_ML_FALLBACK")
