@@ -18,6 +18,7 @@ class ForecastRepository:
         stmt = (
             select(ForecastORM)
             .where(~ForecastORM.name.like("bundle::history-%"))
+            .where(~ForecastORM.name.like("backfill::%"))
             .order_by(ForecastORM.created_at.desc())
             .limit(limit)
         )

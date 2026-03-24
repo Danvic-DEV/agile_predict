@@ -419,10 +419,7 @@ def run_ml_day_ahead_forecast(
         bridge_day_ahead=bridge_series,
     )
     blend_mode = "blend+bridge" if bridge_series is not None and not bridge_series.empty else "blend"
-    if range_mode == "kde":
-        range_mode = f"kde+{blend_mode}"
-    else:
-        range_mode = f"fallback+{blend_mode}"
+    range_mode = f"{range_mode}+{blend_mode}"
 
     cv_mean = float(-np.mean(scores)) if scores is not None else None
     cv_stdev = float(np.std(scores)) if scores is not None else None
