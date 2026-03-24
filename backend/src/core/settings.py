@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     )
     auto_bootstrap_on_startup: bool = Field(default=True, alias="AUTO_BOOTSTRAP_ON_STARTUP")
     auto_bootstrap_mode: str = Field(default="update", alias="AUTO_BOOTSTRAP_MODE")
-    auto_bootstrap_points: int = Field(default=96, alias="AUTO_BOOTSTRAP_POINTS")
+    auto_bootstrap_points: int = Field(default=336, alias="AUTO_BOOTSTRAP_POINTS")
     auto_bootstrap_regions: str = Field(default="X,G", alias="AUTO_BOOTSTRAP_REGIONS")
     auto_update_enabled: bool = Field(default=True, alias="AUTO_UPDATE_ENABLED")
     auto_update_interval_seconds: int = Field(default=14400, alias="AUTO_UPDATE_INTERVAL_SECONDS")  # 4 hours
@@ -53,6 +53,7 @@ class Settings(BaseSettings):
     ml_write_mode: str = Field(default="deterministic", alias="ML_WRITE_MODE")
     allow_ingest_fallback: bool = Field(default=False, alias="ALLOW_INGEST_FALLBACK")
     allow_ml_fallback: bool = Field(default=False, alias="ALLOW_ML_FALLBACK")
+    allow_partial_forecast_horizon: bool = Field(default=False, alias="ALLOW_PARTIAL_FORECAST_HORIZON")
     allow_startup_bootstrap_fallback: bool = Field(default=False, alias="ALLOW_STARTUP_BOOTSTRAP_FALLBACK")
     startup_update_timeout_seconds: int = Field(default=180, alias="STARTUP_UPDATE_TIMEOUT_SECONDS")
 

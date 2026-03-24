@@ -132,8 +132,11 @@ def run_update_forecast_job(uow: UnitOfWork) -> ForecastRunResult:
             f"have={available_feature_points} need={forecast_points} "
             f"(missing={missing_points} slots, {missing_days:.2f} days)"
         )
+        if not settings.allow_partial_forecast_horizon:
+            raise RuntimeError(forward_feature_warning)
+
         log.warning(
-            "Truncating forecast horizon to available live forecast features: %s",
+            "Partial forecast horizon enabled; publishing degraded forecast with real rows only: %s",
             forward_feature_warning,
         )
         forecast_points = available_feature_points
@@ -202,6 +205,10 @@ def run_update_forecast_job(uow: UnitOfWork) -> ForecastRunResult:
         day_ahead_high_values = None
         source = pipeline.source
 
+    if forward_feature_warning is not None:
+        ml_error = f"{ml_error}; {forward_feature_warning}" if ml_error else forward_feature_warning
+        source = f"{source}:partial-horizon"
+
     feature_rows = [
         HistoryForecastFeatureRow(
             date_time=ts.to_pydatetime(),
@@ -216,9 +223,6 @@ def run_update_forecast_job(uow: UnitOfWork) -> ForecastRunResult:
         )
         for ts, row in live_feature_frame.iterrows()
     ]
-
-    if forward_feature_warning is not None:
-        ml_error = f"{ml_error}; {forward_feature_warning}" if ml_error else forward_feature_warning
 
     # Generate timestamped forecast name for multi-forecast tracking
     now_utc = datetime.now(timezone.utc)

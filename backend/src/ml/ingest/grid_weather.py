@@ -440,20 +440,23 @@ def _fetch_open_meteo(start_date: str, end_date: str) -> pd.DataFrame:
 
     # Archive (historical, complete)
     try:
-        params = {
-            "latitude": 54.0,
-            "longitude": 2.3,
-            "start_date": start_date,
-            "end_date": end_date,
-            "hourly": ",".join(cols),
-        }
-        data = _retry(lambda: _get_json("https://archive-api.open-meteo.com/v1/archive", params))
-        hourly = data["hourly"]
-        df = pd.DataFrame(hourly)
-        df.index = pd.to_datetime(df["time"], utc=True)
-        df = df[cols].rename(columns=rename).astype(float).sort_index()
-        df = df.resample("30min").interpolate()
-        frames.append(df)
+        archive_start = pd.Timestamp(start_date, tz="UTC").normalize()
+        archive_end = min(pd.Timestamp(end_date, tz="UTC").normalize(), pd.Timestamp.now(tz="UTC").normalize())
+        if archive_start <= archive_end:
+            params = {
+                "latitude": 54.0,
+                "longitude": 2.3,
+                "start_date": archive_start.strftime("%Y-%m-%d"),
+                "end_date": archive_end.strftime("%Y-%m-%d"),
+                "hourly": ",".join(cols),
+            }
+            data = _retry(lambda: _get_json("https://archive-api.open-meteo.com/v1/archive", params))
+            hourly = data["hourly"]
+            df = pd.DataFrame(hourly)
+            df.index = pd.to_datetime(df["time"], utc=True)
+            df = df[cols].rename(columns=rename).astype(float).sort_index()
+            df = df.resample("30min").interpolate()
+            frames.append(df)
     except Exception as exc:  # noqa: BLE001
         log.warning("Open-Meteo archive failed: %s", exc)
 
