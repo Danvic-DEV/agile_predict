@@ -287,19 +287,20 @@ def backfill_agile_prices(
         from_date = now_utc - timedelta(days=days)
         to_date = now_utc + timedelta(days=2)  # Include forward-released prices
         
-        # Default to all regions if not specified
+        # Default to all regions if not specified - let Octopus API discover them
+        # rather than hardcoding a list that may be wrong
         if not regions:
-            regions = ["A", "B", "C", "D", "E", "F", "G", "H", "J", "K", "L", "M", "N", "P", "Q"]
-        
-        # Normalize regions
-        normalized_regions = [normalize_region(r) for r in regions]
+            regions = None  # fetch_agile_prices_all_regions auto-discovers
+            normalized_regions = []
+        else:
+            normalized_regions = [normalize_region(r) for r in regions]
         
         # Fetch prices for all regions
         agile_prices_by_region = fetch_agile_prices_all_regions(
             from_date=from_date,
             to_date=to_date,
             timeout=30,
-            regions=normalized_regions,
+            regions=normalized_regions if normalized_regions else None,
         )
         
         # Flatten to upsert rows
@@ -312,6 +313,9 @@ def backfill_agile_prices(
                     "agile_actual": float(price),
                 })
         
+        # Use the actual regions returned by the API for accurate reporting
+        fetched_regions = sorted(agile_prices_by_region.keys())
+        
         if agile_rows:
             upsert_count = uow.agile_actual_writes.upsert_many(agile_rows)
             uow.commit()
@@ -322,15 +326,15 @@ def backfill_agile_prices(
             max_date = max(all_dates)
             
             return BackfillAgilePricesResponse(
-                regions_processed=normalized_regions,
+                regions_processed=fetched_regions,
                 total_prices_upserted=upsert_count,
                 period_start=min_date.isoformat(),
                 period_end=max_date.isoformat(),
-                detail=f"Successfully backfilled {upsert_count} Agile prices across {len(normalized_regions)} regions from {min_date.date()} to {max_date.date()}",
+                detail=f"Successfully backfilled {upsert_count} Agile prices across {len(fetched_regions)} regions from {min_date.date()} to {max_date.date()}",
             )
         else:
             return BackfillAgilePricesResponse(
-                regions_processed=normalized_regions,
+                regions_processed=fetched_regions,
                 total_prices_upserted=0,
                 period_start="",
                 period_end="",
