@@ -35,6 +35,81 @@ type ChartModel = {
   midnightMarkers: MidnightMarker[];
 };
 
+function buildSegmentedLinePath(
+  points: AgilePricePoint[],
+  includePoint: (point: AgilePricePoint) => boolean,
+  getValue: (point: AgilePricePoint) => number,
+  scaleX: (index: number) => number,
+  scaleY: (value: number) => number,
+): string {
+  let segmentOpen = false;
+  const segments: string[] = [];
+
+  points.forEach((point, index) => {
+    if (!includePoint(point)) {
+      segmentOpen = false;
+      return;
+    }
+
+    const x = scaleX(index);
+    const y = scaleY(getValue(point));
+    segments.push(`${segmentOpen ? "L" : "M"}${x.toFixed(2)},${y.toFixed(2)}`);
+    segmentOpen = true;
+  });
+
+  return segments.join(" ");
+}
+
+function buildSegmentedBandPath(
+  points: AgilePricePoint[],
+  includePoint: (point: AgilePricePoint) => boolean,
+  scaleX: (index: number) => number,
+  scaleY: (value: number) => number,
+): string {
+  const segments: Array<Array<{ point: AgilePricePoint; index: number }>> = [];
+  let current: Array<{ point: AgilePricePoint; index: number }> = [];
+
+  points.forEach((point, index) => {
+    if (includePoint(point)) {
+      current.push({ point, index });
+      return;
+    }
+
+    if (current.length > 0) {
+      segments.push(current);
+      current = [];
+    }
+  });
+
+  if (current.length > 0) {
+    segments.push(current);
+  }
+
+  return segments
+    .map((segment) => {
+      const highPath = segment
+        .map(({ point, index }, segmentIndex) => {
+          const x = scaleX(index).toFixed(2);
+          const y = scaleY(point.agile_high ?? point.agile_pred).toFixed(2);
+          return `${segmentIndex === 0 ? "M" : "L"}${x},${y}`;
+        })
+        .join(" ");
+
+      const lowPath = segment
+        .slice()
+        .reverse()
+        .map(({ point, index }) => {
+          const x = scaleX(index).toFixed(2);
+          const y = scaleY(point.agile_low ?? point.agile_pred).toFixed(2);
+          return `L${x},${y}`;
+        })
+        .join(" ");
+
+      return `${highPath} ${lowPath} Z`;
+    })
+    .join(" ");
+}
+
 function toLondonTimeParts(dateTime: string): Record<string, string> {
   const parts = new Intl.DateTimeFormat("en-GB", {
     day: "2-digit",
@@ -90,38 +165,25 @@ function buildChartModel(points: AgilePricePoint[]): ChartModel {
   const scaleX = (index: number) => CHART_MARGIN.left + (index / Math.max(points.length - 1, 1)) * width;
   const scaleY = (value: number) => CHART_MARGIN.top + ((axisMax - value) / axisRange) * height;
 
-  const predPath = points
-    .map((point, index) => {
-      const x = scaleX(index);
-      const y = scaleY(point.agile_pred);
-      return `${index === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
-    })
-    .join(" ");
+  const showPredictionForPoint = (point: AgilePricePoint) => point.agile_actual == null;
 
-  const actualPath = points
-    .map((point, index) => {
-      if (point.agile_actual == null) {
-        return null;
-      }
-      const x = scaleX(index);
-      const y = scaleY(point.agile_actual);
-      return `${index === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
-    })
-    .filter((segment) => segment != null)
-    .join(" ");
+  const predPath = buildSegmentedLinePath(
+    points,
+    showPredictionForPoint,
+    (point) => point.agile_pred,
+    scaleX,
+    scaleY,
+  );
 
-  const highPath = points
-    .map((point, index) => `L${scaleX(index).toFixed(2)},${scaleY(point.agile_high ?? point.agile_pred).toFixed(2)}`)
-    .join(" ");
-  const lowPath = points
-    .slice()
-    .reverse()
-    .map(
-      (point, reverseIndex) =>
-        `L${scaleX(points.length - reverseIndex - 1).toFixed(2)},${scaleY(point.agile_low ?? point.agile_pred).toFixed(2)}`,
-    )
-    .join(" ");
-  const bandPath = `M${scaleX(0).toFixed(2)},${scaleY(points[0].agile_high ?? points[0].agile_pred).toFixed(2)} ${highPath} ${lowPath} Z`;
+  const actualPath = buildSegmentedLinePath(
+    points,
+    (point) => point.agile_actual != null,
+    (point) => point.agile_actual ?? point.agile_pred,
+    scaleX,
+    scaleY,
+  );
+
+  const bandPath = buildSegmentedBandPath(points, showPredictionForPoint, scaleX, scaleY);
 
   const yTicks: ChartTick[] = [];
   for (let value = tickEnd; value >= tickStart; value -= tickStep) {
