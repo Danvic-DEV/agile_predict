@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { TrainingHealthTile } from "./TrainingHealthTile";
 import {
   fetchDiscordConfig,
   fetchFeedHealth,
@@ -1074,6 +1075,8 @@ export function DiagnosticsPanel() {
               </div>
             </>
           )}
+
+          <TrainingHealthTile region="B" />
         </>
       )}
 

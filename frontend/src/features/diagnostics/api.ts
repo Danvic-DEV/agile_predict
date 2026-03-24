@@ -15,6 +15,7 @@ import type {
   RefreshFeedResponse,
   LatestParitySummary,
   RunUpdateJobResponse,
+  TrainingDataHealthResponse,
 } from "../../lib/api/types";
 
 export function fetchLatestDiagnostics(): Promise<LatestForecastDiagnostics> {
@@ -69,6 +70,10 @@ export function fetchIngestPipelineHealth(): Promise<IngestPipelineHealth> {
 
 export function fetchPipelineTruthAudit(): Promise<PipelineTruthAudit> {
   return getJson<PipelineTruthAudit>("/diagnostics/pipeline-truth-audit");
+}
+
+export function fetchTrainingDataHealth(region = "B"): Promise<TrainingDataHealthResponse> {
+  return getJson<TrainingDataHealthResponse>(`/diagnostics/training-data-health/${region}`);
 }
 
 export function fetchParityHistory(options?: {

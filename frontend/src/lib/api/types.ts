@@ -231,3 +231,35 @@ export interface PipelineTruthAudit {
   latest_data_freshness_minutes: number | null;
   issues: PipelineTruthIssue[];
 }
+
+export interface DataSourceBreakdown {
+  agile_actual_count: number;
+  agile_percent: number;
+  nordpool_count: number;
+  nordpool_percent: number;
+}
+
+export interface WeatherCoverageInfo {
+  backfill_forecast_count: number;
+  backfill_date_range: string | null;
+  estimated_training_points: number;
+}
+
+export interface TrainingDataAlert {
+  severity: "critical" | "warning" | "info";
+  title: string;
+  message: string;
+  impact: string;
+  fix_action: string | null;
+  fix_endpoint: string | null;
+}
+
+export interface TrainingDataHealthResponse {
+  region: string;
+  health_status: "healthy" | "degraded" | "critical";
+  data_source_breakdown: DataSourceBreakdown;
+  weather_coverage: WeatherCoverageInfo;
+  alerts: TrainingDataAlert[];
+  recommendations: string[];
+  generated_at: string;
+}
