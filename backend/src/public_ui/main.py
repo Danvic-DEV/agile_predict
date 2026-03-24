@@ -1077,62 +1077,83 @@ async def index() -> HTMLResponse:
             const scaleX = (index) => CHART_MARGIN.left + (index / Math.max(points.length - 1, 1)) * width;
             const scaleY = (value) => CHART_MARGIN.top + ((axisMax - value) / axisRange) * height;
 
-            const predPath = points
-                .map((point, index) => {
-                    const pred = toNumber(point.agile_pred);
-                    const yValue = pred == null ? 0 : pred;
+            function buildSegmentedLinePath(includePoint, getValue) {
+                let segmentOpen = false;
+                const segments = [];
+                points.forEach((point, index) => {
+                    if (!includePoint(point)) {
+                        segmentOpen = false;
+                        return;
+                    }
+                    const rawValue = getValue(point);
+                    const yValue = rawValue == null ? 0 : rawValue;
                     const x = scaleX(index);
                     const y = scaleY(yValue);
-                    return (index === 0 ? 'M' : 'L') + x.toFixed(2) + ',' + y.toFixed(2);
-                })
-                .join(' ');
+                    segments.push((segmentOpen ? 'L' : 'M') + x.toFixed(2) + ',' + y.toFixed(2));
+                    segmentOpen = true;
+                });
+                return segments.join(' ');
+            }
 
-            const actualPath = points
-                .map((point, index) => {
-                    const actual = toNumber(point.agile_actual);
-                    if (actual == null) {
-                        return null;
+            function buildSegmentedBandPath(includePoint) {
+                const segments = [];
+                let current = [];
+
+                points.forEach((point, index) => {
+                    if (includePoint(point)) {
+                        current.push({ point, index });
+                        return;
                     }
-                    const x = scaleX(index);
-                    const y = scaleY(actual);
-                    return (index === 0 ? 'M' : 'L') + x.toFixed(2) + ',' + y.toFixed(2);
-                })
-                .filter((segment) => segment != null)
-                .join(' ');
+                    if (current.length) {
+                        segments.push(current);
+                        current = [];
+                    }
+                });
+                if (current.length) {
+                    segments.push(current);
+                }
 
-            const highPath = points
-                .map((point, index) => {
-                    const high = toNumber(point.agile_high);
-                    const pred = toNumber(point.agile_pred);
-                    const yValue = high == null ? (pred == null ? 0 : pred) : high;
-                    return 'L' + scaleX(index).toFixed(2) + ',' + scaleY(yValue).toFixed(2);
-                })
-                .join(' ');
+                return segments
+                    .map((segment) => {
+                        const highPath = segment
+                            .map(({ point, index }, segmentIndex) => {
+                                const high = toNumber(point.agile_high);
+                                const pred = toNumber(point.agile_pred);
+                                const yValue = high == null ? (pred == null ? 0 : pred) : high;
+                                const prefix = segmentIndex === 0 ? 'M' : 'L';
+                                return prefix + scaleX(index).toFixed(2) + ',' + scaleY(yValue).toFixed(2);
+                            })
+                            .join(' ');
 
-            const lowPath = points
-                .slice()
-                .reverse()
-                .map((point, reverseIndex) => {
-                    const low = toNumber(point.agile_low);
-                    const pred = toNumber(point.agile_pred);
-                    const yValue = low == null ? (pred == null ? 0 : pred) : low;
-                    return 'L' + scaleX(points.length - reverseIndex - 1).toFixed(2) + ',' + scaleY(yValue).toFixed(2);
-                })
-                .join(' ');
+                        const lowPath = segment
+                            .slice()
+                            .reverse()
+                            .map(({ point, index }) => {
+                                const low = toNumber(point.agile_low);
+                                const pred = toNumber(point.agile_pred);
+                                const yValue = low == null ? (pred == null ? 0 : pred) : low;
+                                return 'L' + scaleX(index).toFixed(2) + ',' + scaleY(yValue).toFixed(2);
+                            })
+                            .join(' ');
 
-            const firstHigh = toNumber(points[0].agile_high);
-            const firstPred = toNumber(points[0].agile_pred);
-            const bandStart = firstHigh == null ? (firstPred == null ? 0 : firstPred) : firstHigh;
-            const bandPath =
-                'M' +
-                scaleX(0).toFixed(2) +
-                ',' +
-                scaleY(bandStart).toFixed(2) +
-                ' ' +
-                highPath +
-                ' ' +
-                lowPath +
-                ' Z';
+                        return highPath + ' ' + lowPath + ' Z';
+                    })
+                    .join(' ');
+            }
+
+            const showPredictionForPoint = (point) => toNumber(point.agile_actual) == null;
+
+            const predPath = buildSegmentedLinePath(
+                showPredictionForPoint,
+                (point) => toNumber(point.agile_pred)
+            );
+
+            const actualPath = buildSegmentedLinePath(
+                (point) => toNumber(point.agile_actual) != null,
+                (point) => toNumber(point.agile_actual)
+            );
+
+            const bandPath = buildSegmentedBandPath(showPredictionForPoint);
 
             const yTicks = [];
             for (let value = tickEnd; value >= tickStart; value -= tickStep) {
@@ -1190,8 +1211,12 @@ async def index() -> HTMLResponse:
                 );
             });
 
-            parts.push('<path d="' + chart.bandPath + '" class="forecast-chart-band"></path>');
-            parts.push('<path d="' + chart.predPath + '" class="forecast-chart-line"></path>');
+            if (chart.bandPath) {
+                parts.push('<path d="' + chart.bandPath + '" class="forecast-chart-band"></path>');
+            }
+            if (chart.predPath) {
+                parts.push('<path d="' + chart.predPath + '" class="forecast-chart-line"></path>');
+            }
             if (chart.actualPath) {
                 parts.push('<path d="' + chart.actualPath + '" class="forecast-chart-actual"></path>');
             }
