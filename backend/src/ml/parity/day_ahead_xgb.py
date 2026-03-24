@@ -29,8 +29,6 @@ LEGACY_FEATURES: tuple[str, ...] = (
     "rad",
     "sin_hour",
     "cos_hour",
-    "net_demand",
-    "renewable_frac",
 )
 
 
@@ -186,8 +184,6 @@ def check_ml_training_readiness(
     df["peak"] = ((df["time"] >= 16) & (df["time"] < 19)).astype(float)
     df["sin_hour"] = np.sin(2 * np.pi * df["time"] / 24)
     df["cos_hour"] = np.cos(2 * np.pi * df["time"] / 24)
-    df["net_demand"] = df["demand"] - df["bm_wind"] - df["emb_wind"] - df["solar"]
-    df["renewable_frac"] = (df["bm_wind"] + df["emb_wind"] + df["solar"]) / df["demand"].clip(lower=1.0)
 
     train_df = df[df["forecast_id"].isin(ff_train.index)]
     train_df = train_df[train_df["days_ago"] < max_days]
@@ -315,8 +311,6 @@ def run_ml_day_ahead_forecast(
     df["peak"] = ((df["time"] >= 16) & (df["time"] < 19)).astype(float)
     df["sin_hour"] = np.sin(2 * np.pi * df["time"] / 24)
     df["cos_hour"] = np.cos(2 * np.pi * df["time"] / 24)
-    df["net_demand"] = df["demand"] - df["bm_wind"] - df["emb_wind"] - df["solar"]
-    df["renewable_frac"] = (df["bm_wind"] + df["emb_wind"] + df["solar"]) / df["demand"].clip(lower=1.0)
 
     train_df = df[df["forecast_id"].isin(ff_train.index)]
     train_df = train_df[train_df["days_ago"] < max_days]
@@ -381,8 +375,6 @@ def run_ml_day_ahead_forecast(
     fc["peak"] = ((fc["time"] >= 16) & (fc["time"] < 19)).astype(float)
     fc["sin_hour"] = np.sin(2 * np.pi * fc["time"] / 24)
     fc["cos_hour"] = np.cos(2 * np.pi * fc["time"] / 24)
-    fc["net_demand"] = fc["demand"] - fc["bm_wind"] - fc["emb_wind"] - fc["solar"]
-    fc["renewable_frac"] = (fc["bm_wind"] + fc["emb_wind"] + fc["solar"]) / fc["demand"].clip(lower=1.0)
 
     feature_frame = fc.reindex(columns=list(LEGACY_FEATURES)).astype(float)
     # Do NOT ffill/bfill - pass NaN to XGBoost which learned to handle missing values
