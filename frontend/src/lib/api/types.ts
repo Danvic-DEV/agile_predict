@@ -232,17 +232,22 @@ export interface PipelineTruthAudit {
   issues: PipelineTruthIssue[];
 }
 
-export interface DataSourceBreakdown {
+export interface PriceDataBreakdown {
   agile_actual_count: number;
-  agile_percent: number;
   nordpool_count: number;
-  nordpool_percent: number;
+  total_count: number;
+  agile_percent: number;
+  earliest_date: string;
+  latest_date: string;
+  coverage_days: number;
 }
 
 export interface WeatherCoverageInfo {
-  backfill_forecast_count: number;
-  backfill_date_range: string | null;
-  estimated_training_points: number;
+  backfill_forecasts: number;
+  earliest_weather: string | null;
+  latest_weather: string | null;
+  coverage_days: number;
+  agile_without_weather_days: number;
 }
 
 export interface TrainingDataAlert {
@@ -255,11 +260,16 @@ export interface TrainingDataAlert {
 }
 
 export interface TrainingDataHealthResponse {
+  generated_at: string;
   region: string;
   health_status: "healthy" | "degraded" | "critical";
-  data_source_breakdown: DataSourceBreakdown;
+  health_summary: string;
+  price_data: PriceDataBreakdown;
   weather_coverage: WeatherCoverageInfo;
+  training_points: number;
+  forecast_count: number;
+  meets_minimum_threshold: boolean;
+  minimum_threshold: number;
   alerts: TrainingDataAlert[];
   recommendations: string[];
-  generated_at: string;
 }

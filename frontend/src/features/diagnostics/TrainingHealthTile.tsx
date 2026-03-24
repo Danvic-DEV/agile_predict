@@ -73,9 +73,20 @@ export function TrainingHealthTile({ region = "B" }: TrainingHealthTileProps) {
     );
   }
 
-  const healthClass = healthStatusClass(data.health_status);
-  const breakdown = data.data_source_breakdown;
+  // Safe access with fallbacks
+  const priceData = data.price_data;
   const coverage = data.weather_coverage;
+
+  if (!priceData || !coverage) {
+    return (
+      <div className="progressive-card is-ready">
+        <h3>Training Data Health</h3>
+        <p className="error-text">Incomplete data received from API</p>
+      </div>
+    );
+  }
+
+  const healthClass = healthStatusClass(data.health_status);
 
   return (
     <div className="progressive-card is-ready">
@@ -86,29 +97,31 @@ export function TrainingHealthTile({ region = "B" }: TrainingHealthTileProps) {
         </span>
       </div>
       
-      <p className="section-meta">Updated: {new Date(data.generated_at).toLocaleString()}</p>
+      <p className="section-meta">{data.health_summary}</p>
 
       {/* Data Source Breakdown */}
       <div className="metric-grid" style={{ marginTop: 16 }}>
         <div className="metric-item">
           <span className="label">Agile Actual Prices</span>
-          <strong>{breakdown.agile_actual_count.toLocaleString()}</strong>
-          <span className="detail">{breakdown.agile_percent.toFixed(1)}% of total</span>
+          <strong>{priceData.agile_actual_count.toLocaleString()}</strong>
+          <span className="detail">{priceData.agile_percent.toFixed(1)}% of total</span>
         </div>
         <div className="metric-item">
           <span className="label">Nordpool Fallback</span>
-          <strong>{breakdown.nordpool_count.toLocaleString()}</strong>
-          <span className="detail">{breakdown.nordpool_percent.toFixed(1)}% of total</span>
+          <strong>{priceData.nordpool_count.toLocaleString()}</strong>
+          <span className="detail">{((priceData.nordpool_count / priceData.total_count) * 100).toFixed(1)}% of total</span>
         </div>
         <div className="metric-item">
           <span className="label">Training Points</span>
-          <strong>{coverage.estimated_training_points.toLocaleString()}</strong>
-          <span className="detail">Estimated after weather join</span>
+          <strong>{data.training_points.toLocaleString()}</strong>
+          <span className="detail">
+            {data.meets_minimum_threshold ? "Healthy" : `Need ${data.minimum_threshold}+`}
+          </span>
         </div>
         <div className="metric-item">
           <span className="label">Backfill Coverage</span>
-          <strong>{coverage.backfill_forecast_count} forecasts</strong>
-          <span className="detail">{coverage.backfill_date_range || "No backfill data"}</span>
+          <strong>{coverage.backfill_forecasts} forecasts</strong>
+          <span className="detail">{coverage.coverage_days} days</span>
         </div>
       </div>
 
