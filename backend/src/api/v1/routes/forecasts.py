@@ -16,7 +16,6 @@ def _ensure_customer_forecast_is_trusted() -> None:
         (source == "ml" or source.startswith("ml:"))
         and state.get("ml_write_mode") == "ml"
         and not bool(state.get("training_mode", False))
-        and not state.get("ml_error")
     ):
         return
 
