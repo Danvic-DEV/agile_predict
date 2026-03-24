@@ -13,6 +13,7 @@ from sqlalchemy import select
 
 from src.repositories.sql_models import AgileActualORM, ForecastDataORM, ForecastORM, PriceHistoryORM
 from src.repositories.unit_of_work import UnitOfWork
+from src.ml.transforms.agile_transform import agile_to_day_ahead
 
 log = logging.getLogger(__name__)
 
@@ -280,7 +281,7 @@ def run_ml_day_ahead_forecast(
             raise ValueError("agile_actual column missing from AgileActualORM training data")
         agile_df["date_time"] = pd.to_datetime(agile_df["date_time"], utc=True)
         agile_df = agile_df.set_index("date_time").sort_index()
-        prices_df["day_ahead"] = agile_df["agile_actual"] * 10.0  # p/kWh → £/MWh to match Nordpool training scale
+        prices_df["day_ahead"] = agile_to_day_ahead(agile_df["agile_actual"], training_region)
         agile_count = len(agile_df)
     
     if not nordpool_df.empty:
