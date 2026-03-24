@@ -23,10 +23,8 @@ LEGACY_FEATURES: tuple[str, ...] = (
     "demand",
     "peak",
     "days_ago",
-    "wind_10m",
     "weekend",
     "temp_2m",
-    "rad",
     "sin_hour",
     "cos_hour",
 )
