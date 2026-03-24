@@ -59,23 +59,17 @@ def seed_empty_database(uow: UnitOfWork) -> str:
 def initialize_runtime() -> None:
     Base.metadata.create_all(bind=engine)
 
-    if not settings.auto_bootstrap_on_startup:
-        return
-
     session = SessionLocal()
     try:
         existing_forecast = session.execute(select(ForecastORM.id).limit(1)).scalar_one_or_none()
-        if existing_forecast is not None:
-            # Database already seeded, check if we should run initial backfill
-            if settings.auto_backfill_on_startup:
-                _run_initial_backfill_safe(session)
-            return
-
-        uow = UnitOfWork(session=session)
-        seed_empty_database(uow=uow)
-        uow.commit()
         
-        # After initial seed, run backfill to populate historical data
+        # Handle database seeding if needed
+        if existing_forecast is None and settings.auto_bootstrap_on_startup:
+            uow = UnitOfWork(session=session)
+            seed_empty_database(uow=uow)
+            uow.commit()
+        
+        # Run backfill (independent of bootstrap status)
         if settings.auto_backfill_on_startup:
             _run_initial_backfill_safe(session)
             
