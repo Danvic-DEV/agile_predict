@@ -296,7 +296,7 @@ export function ForecastDashboard() {
   const [regions, setRegions] = useState<string[]>(["B"]);
   const [selectedRegion, setSelectedRegion] = useState("B");
   const [days, setDays] = useState(7);
-  const [forecastCount, setForecastCount] = useState(3);
+  const [forecastCount, setForecastCount] = useState(10);
   const [state, setState] = useState<LoadState>("idle");
   const [error, setError] = useState<string>("");
   const [customerForecastStatus, setCustomerForecastStatus] = useState<CustomerForecastStatus>("available");
@@ -419,15 +419,29 @@ export function ForecastDashboard() {
   }, [prices, latest]);
 
   const dayGroups = useMemo(() => {
-    if (!latest) {
+    if (!prices || prices.length === 0) {
       return [] as Array<{ key: string; label: string; slots: AgilePricePoint[] }>;
     }
 
-    const nowMs = Date.now();
-    const futureSlots = latest.prices.filter((slot) => new Date(slot.date_time).getTime() >= nowMs);
+    // Merge slots from all forecasts; most recent forecast (index 0) wins on conflict
+    const slotMap = new Map<string, AgilePricePoint>();
+    for (let i = prices.length - 1; i >= 0; i--) {
+      prices[i].prices.forEach((slot) => slotMap.set(slot.date_time, slot));
+    }
+
+    const allSlots = Array.from(slotMap.values()).sort(
+      (a, b) => new Date(a.date_time).getTime() - new Date(b.date_time).getTime(),
+    );
+
+    // Show from the start of today in London time so past slots with actuals are visible.
+    // getLondonDayKey returns a YYYY-MM-DD string in London time; find the first slot
+    // on or after that calendar day to avoid UTC-offset edge cases.
+    const todayLondonKey = getLondonDayKey(new Date().toISOString());
+    const relevantSlots = allSlots.filter((slot) => getLondonDayKey(slot.date_time) >= todayLondonKey);
+
     const groups = new Map<string, { key: string; label: string; slots: AgilePricePoint[] }>();
 
-    futureSlots.forEach((slot) => {
+    relevantSlots.forEach((slot) => {
       const key = getLondonDayKey(slot.date_time);
       if (!groups.has(key)) {
         groups.set(key, {
@@ -440,7 +454,7 @@ export function ForecastDashboard() {
     });
 
     return Array.from(groups.values());
-  }, [latest]);
+  }, [prices]);
 
   useEffect(() => {
     if (dayGroups.length === 0) {

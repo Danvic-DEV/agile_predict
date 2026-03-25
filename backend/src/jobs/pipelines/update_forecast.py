@@ -247,8 +247,8 @@ def run_update_forecast_job(uow: UnitOfWork) -> ForecastRunResult:
         ),
     )
 
-    # Prune old update-job forecasts, keeping only the last 3
-    prune_update_job_forecasts(uow=uow, keep_count=3)
+    # Prune old update-job forecasts, keeping only the last 10
+    prune_update_job_forecasts(uow=uow, keep_count=10)
 
     records_written = result.forecast_data_points_written + result.agile_data_points_written
     output = ForecastRunResult(
