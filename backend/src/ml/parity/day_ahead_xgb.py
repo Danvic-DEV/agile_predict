@@ -29,11 +29,6 @@ LEGACY_FEATURES: tuple[str, ...] = (
     "cos_hour",
 )
 
-# MODEL_FEATURES extends LEGACY_FEATURES with the gas-regime signal.
-# recent_mean_price = mean N2EX/Agile day-ahead price in the 7 days before
-# the forecast was created; gives the model a current price-level anchor.
-MODEL_FEATURES: tuple[str, ...] = LEGACY_FEATURES + ("recent_mean_price",)
-
 
 @dataclass(frozen=True)
 class MlParityForecastOutput:
@@ -315,21 +310,10 @@ def run_ml_day_ahead_forecast(
     df["sin_hour"] = np.sin(2 * np.pi * df["time"] / 24)
     df["cos_hour"] = np.cos(2 * np.pi * df["time"] / 24)
 
-    # Compute recent_mean_price per forecast: mean price in 7 days before created_at.
-    # This gives the model an explicit gas-price regime signal.
-    prices_series = prices_df["day_ahead"].sort_index()
-    fc_recent_means: dict[int, float] = {}
-    for _fid, _fgrp in df.groupby("forecast_id"):
-        _ca = _fgrp["created_at"].iloc[0]
-        _rmp_start = _ca - pd.Timedelta(days=7)
-        _rmp_mask = (prices_series.index >= _rmp_start) & (prices_series.index < _ca)
-        fc_recent_means[_fid] = float(prices_series[_rmp_mask].mean()) if _rmp_mask.sum() > 0 else np.nan
-    df["recent_mean_price"] = df["forecast_id"].map(fc_recent_means)
-
     train_df = df[df["forecast_id"].isin(ff_train.index)]
     train_df = train_df[train_df["days_ago"] < max_days]
     train_df = train_df[(train_df.index >= train_df["ag_start"]) & (train_df.index < train_df["ag_end"])]
-    train_df = train_df[list(MODEL_FEATURES)].merge(prices_df[["day_ahead"]], left_index=True, right_index=True, how="inner")
+    train_df = train_df[list(LEGACY_FEATURES)].merge(prices_df[["day_ahead"]], left_index=True, right_index=True, how="inner")
     # Allow NaN in features - XGBoost will learn to handle missing data
     train_df = train_df.dropna(subset=["day_ahead"])  # Only require target to be present
     if len(train_df) < 30:
@@ -337,9 +321,7 @@ def run_ml_day_ahead_forecast(
 
     train_y = train_df.pop("day_ahead").astype(float)
     train_x = train_df.astype(float)
-    # Exponential recency decay: halflife=30d downweights old price regimes.
-    # Validated locally: MAE 12.81→6.11p, evening bias +5.4→-1.1p.
-    sample_weights = np.exp(-train_x["days_ago"].values / 30.0)
+    sample_weights = ((np.log10((train_y - train_y.mean()).abs() + 10) * 5) - 4).round(0)
 
     model_kwargs: dict[str, str] = {}
     if use_gpu:
@@ -376,7 +358,7 @@ def run_ml_day_ahead_forecast(
     test_df = test_df[test_df.index > test_df["ag_start"]]
     test_df = test_df[test_df["days_ago"] < max_days]
     test_df = test_df.merge(prices_df[["day_ahead"]], left_index=True, right_index=True, how="inner")
-    test_df = test_df.dropna(subset=list(MODEL_FEATURES) + ["day_ahead", "dt"])
+    test_df = test_df.dropna(subset=list(LEGACY_FEATURES) + ["day_ahead", "dt"])
 
     fc = future_feature_frame.copy().sort_index().iloc[:point_count].copy()
     if fc.empty:
@@ -392,16 +374,7 @@ def run_ml_day_ahead_forecast(
     fc["sin_hour"] = np.sin(2 * np.pi * fc["time"] / 24)
     fc["cos_hour"] = np.cos(2 * np.pi * fc["time"] / 24)
 
-    # recent_mean_price at inference: mean of prices in last 7 days before now.
-    _infer_rmp_start = now_utc - pd.Timedelta(days=7)
-    _infer_rmp_mask = (prices_df.index >= _infer_rmp_start) & (prices_df.index < now_utc)
-    if _infer_rmp_mask.sum() > 0:
-        fc["recent_mean_price"] = float(prices_df["day_ahead"][_infer_rmp_mask].mean())
-    else:
-        log.warning("recent_mean_price: no prices found in last 7 days — feature will be NaN")
-        fc["recent_mean_price"] = np.nan
-
-    feature_frame = fc.reindex(columns=list(MODEL_FEATURES)).astype(float)
+    feature_frame = fc.reindex(columns=list(LEGACY_FEATURES)).astype(float)
     # Do NOT ffill/bfill - pass NaN to XGBoost which learned to handle missing values
     preds = pd.Series(_predict_with_dmatrix(model, feature_frame), index=fc.index, name="day_ahead").astype(float)
 
@@ -410,7 +383,7 @@ def run_ml_day_ahead_forecast(
     highs = preds * 1.05
     if (len(test_df) > 10) and (not no_ranges):
         results = test_df[["dt", "day_ahead"]].copy()
-        test_features = test_df[list(MODEL_FEATURES)].astype(float)
+        test_features = test_df[list(LEGACY_FEATURES)].astype(float)
         results["pred"] = _predict_with_dmatrix(model, test_features)
         results["residual"] = results["day_ahead"] - results["pred"]
 
@@ -457,6 +430,6 @@ def run_ml_day_ahead_forecast(
         cv_stdev_rmse=cv_stdev,
         training_rows=len(train_x),
         test_rows=len(test_df),
-        feature_columns=MODEL_FEATURES,
+        feature_columns=LEGACY_FEATURES,
         range_mode=range_mode,
     )
