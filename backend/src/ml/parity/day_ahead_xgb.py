@@ -43,6 +43,7 @@ ML_FEATURES: tuple[str, ...] = (
     "cos_hour",
     "gas_sap",
     "recent_mean_price",
+    "recent_overnight_mean",
 )
 
 _ML_HALFLIFE_DAYS: float = 60.0
@@ -345,14 +346,19 @@ def run_ml_day_ahead_forecast(
     df["gas_sap"] = df["created_at"].dt.normalize().map(gas_sap_map)
 
     # ── recent_mean_price: 7-day mean of actual prices before created_at ─────
+    # ── recent_overnight_mean: same window but only 22:00-06:00 UTC slots ────
     # Computed per forecast_id to avoid lookahead into test data.
     fc_means: dict[int, float] = {}
+    fc_overnight_means: dict[int, float] = {}
     for fid, grp in df.groupby("forecast_id"):
         ca = grp["created_at"].iloc[0]
         start = ca - pd.Timedelta(days=7)
         mask = (prices_ts.index >= start) & (prices_ts.index < ca)
         fc_means[int(fid)] = float(prices_ts[mask].mean()) if mask.sum() > 0 else float("nan")
+        overnight_mask = mask & ((prices_ts.index.hour >= 22) | (prices_ts.index.hour < 6))
+        fc_overnight_means[int(fid)] = float(prices_ts[overnight_mask].mean()) if overnight_mask.sum() > 0 else float("nan")
     df["recent_mean_price"] = df["forecast_id"].map(fc_means)
+    df["recent_overnight_mean"] = df["forecast_id"].map(fc_overnight_means)
 
     train_df = df[df["forecast_id"].isin(ff_train.index)]
     train_df = train_df[train_df["days_ago"] < max_days]
@@ -426,10 +432,13 @@ def run_ml_day_ahead_forecast(
     fc["gas_sap"] = gas_sap_val if gas_sap_val is not None else float("nan")
 
     # recent_mean_price at inference: 7-day mean of actual prices before now
+    # recent_overnight_mean: same window, 22:00-06:00 UTC slots only
     recent_start = now_utc - pd.Timedelta(days=7)
     recent_mask = (prices_ts.index >= recent_start) & (prices_ts.index < pd.Timestamp(now_utc))
     recent_mean_val = float(prices_ts[recent_mask].mean()) if recent_mask.sum() > 0 else float("nan")
     fc["recent_mean_price"] = recent_mean_val
+    overnight_mask = recent_mask & ((prices_ts.index.hour >= 22) | (prices_ts.index.hour < 6))
+    fc["recent_overnight_mean"] = float(prices_ts[overnight_mask].mean()) if overnight_mask.sum() > 0 else float("nan")
 
     feature_frame = fc.reindex(columns=list(ML_FEATURES)).astype(float)
     # Do NOT ffill/bfill - pass NaN to XGBoost which learned to handle missing values
