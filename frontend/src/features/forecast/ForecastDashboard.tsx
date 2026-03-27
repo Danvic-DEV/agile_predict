@@ -165,11 +165,9 @@ function buildChartModel(points: AgilePricePoint[]): ChartModel {
   const scaleX = (index: number) => CHART_MARGIN.left + (index / Math.max(points.length - 1, 1)) * width;
   const scaleY = (value: number) => CHART_MARGIN.top + ((axisMax - value) / axisRange) * height;
 
-  const showPredictionForPoint = (point: AgilePricePoint) => point.agile_actual == null;
-
   const predPath = buildSegmentedLinePath(
     points,
-    showPredictionForPoint,
+    () => true,
     (point) => point.agile_pred,
     scaleX,
     scaleY,
@@ -183,7 +181,7 @@ function buildChartModel(points: AgilePricePoint[]): ChartModel {
     scaleY,
   );
 
-  const bandPath = buildSegmentedBandPath(points, showPredictionForPoint, scaleX, scaleY);
+  const bandPath = buildSegmentedBandPath(points, () => true, scaleX, scaleY);
 
   const yTicks: ChartTick[] = [];
   for (let value = tickEnd; value >= tickStart; value -= tickStep) {

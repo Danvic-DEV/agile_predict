@@ -379,25 +379,9 @@ def run_update_forecast_job(uow: UnitOfWork) -> ForecastRunResult:
         raise
 
     # ------------------------------------------------------------------
-    # Step 3b: patch forecast agile_pred values with published Octopus prices.
-    # Once Octopus releases tomorrow's Agile tariff (~16:00 UK time), every
-    # forecast slot that has a published price should show that price as the
-    # prediction — not the Nordpool-derived transform.  This is non-fatal.
+    # Step 3b: patch_pred_from_actuals removed — agile_pred/low/high always
+    # reflect the ML prediction so accuracy vs actual can be measured.
     # ------------------------------------------------------------------
-    try:
-        from sqlalchemy import select
-        from src.repositories.sql_models import ForecastORM as _ForecastORM
-        _stmt = (
-            select(_ForecastORM.id)
-            .where(_ForecastORM.name.like("bundle::update-job-%"))
-            .order_by(_ForecastORM.created_at.desc())
-            .limit(10)
-        )
-        active_forecast_ids = list(uow.session.execute(_stmt).scalars().all())
-        patched = uow.agile_data_writes.patch_pred_from_actuals(active_forecast_ids)
-        log.info("Patched %s forecast slots with published Octopus prices", patched)
-    except Exception as exc:  # noqa: BLE001
-        log.warning("Agile pred patch from actuals failed (non-fatal): %s", exc)
 
     # ------------------------------------------------------------------
     # Step 3c: ingest additional system-context feeds for future Wave A

@@ -1141,10 +1141,8 @@ async def index() -> HTMLResponse:
                     .join(' ');
             }
 
-            const showPredictionForPoint = (point) => toNumber(point.agile_actual) == null;
-
             const predPath = buildSegmentedLinePath(
-                showPredictionForPoint,
+                () => true,
                 (point) => toNumber(point.agile_pred)
             );
 
@@ -1153,7 +1151,7 @@ async def index() -> HTMLResponse:
                 (point) => toNumber(point.agile_actual)
             );
 
-            const bandPath = buildSegmentedBandPath(showPredictionForPoint);
+            const bandPath = buildSegmentedBandPath(() => true);
 
             const yTicks = [];
             for (let value = tickEnd; value >= tickStart; value -= tickStep) {
