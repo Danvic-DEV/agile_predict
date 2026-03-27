@@ -34,7 +34,10 @@ class GasSapWriteRepository:
                 )
             )
             result = self.session.execute(stmt)
-            total_rowcount += int(result.rowcount or 0)
+            # rowcount can be -1 for ON CONFLICT DO UPDATE in PostgreSQL;
+            # fall back to batch size for accurate accounting.
+            rc = result.rowcount
+            total_rowcount += len(batch) if rc < 0 else int(rc)
 
         self.session.flush()
         return total_rowcount
