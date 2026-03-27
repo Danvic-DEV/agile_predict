@@ -1929,6 +1929,54 @@ export function DiagnosticsPanel() {
                 </div>
               </div>
 
+              {/* Gas Prices */}
+              <div className="parity-detail-card">
+                <h3>Gas Prices (National Gas)</h3>
+                <div className="feed-group">
+                  {Object.entries(feedHealth)
+                    .filter(([id]) => id.startsWith("national_gas_"))
+                    .map(([id, data]) => {
+                      const entry = data as any;
+                      const statusClass = feedStatusClass(entry.status);
+                      return (
+                        <div key={id} className={`feed-item feed-${statusClass}`}>
+                          <div className="feed-name">{entry.name}</div>
+                          <div className="feed-details">
+                            <span className={`feed-status feed-status-${statusClass}`}>{feedStatusLabel(entry.status)}</span>
+                            {entry.last_successful_pull && (
+                              <span className="feed-timestamp">Last: {formatUpdateRelativeTime(entry.last_successful_pull, nowMs)}</span>
+                            )}
+                            {entry.records_received > 0 && (
+                              <span className="feed-count">{entry.records_received} records</span>
+                            )}
+                            {entry.last_error && (
+                              <span className="feed-error" title={entry.last_error}>
+                                Error: {entry.last_error.substring(0, 40)}...
+                              </span>
+                            )}
+                            {Array.isArray(entry.validation_issues) && entry.validation_issues.length > 0 && (
+                              <span className="feed-quality">
+                                Quality: {entry.validation_issues.slice(0, 2).join(", ")}
+                              </span>
+                            )}
+                            <span className="feed-action">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void handleRefreshFeedSource(id, entry.name ?? id);
+                                }}
+                                disabled={Boolean(refreshingFeeds[id])}
+                              >
+                                {refreshingFeeds[id] ? "Updating..." : "Update feed"}
+                              </button>
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+
               {/* Weather */}
               <div className="parity-detail-card">
                 <h3>Weather Data (Open-Meteo)</h3>
