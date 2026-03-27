@@ -10,7 +10,7 @@ import xgboost as xg
 from sklearn.model_selection import cross_val_score
 from sqlalchemy import select
 
-from src.repositories.sql_models import AgileActualORM, ForecastDataORM, ForecastORM, PriceHistoryORM
+from src.repositories.sql_models import AgileActualORM, ForecastDataORM, ForecastORM, GasSapORM, PriceHistoryORM
 from src.repositories.unit_of_work import UnitOfWork
 from src.ml.transforms.agile_transform import agile_to_day_ahead
 
@@ -28,6 +28,24 @@ LEGACY_FEATURES: tuple[str, ...] = (
     "sin_hour",
     "cos_hour",
 )
+
+# Updated feature set: drops days_ago (always 0 at inference), adds gas SAP
+# and recent_mean_price as price-regime signals.  Halflife=60d exp recency weighting.
+ML_FEATURES: tuple[str, ...] = (
+    "bm_wind",
+    "emb_wind",
+    "solar",
+    "demand",
+    "peak",
+    "weekend",
+    "temp_2m",
+    "sin_hour",
+    "cos_hour",
+    "gas_sap",
+    "recent_mean_price",
+)
+
+_ML_HALFLIFE_DAYS: float = 60.0
 
 
 @dataclass(frozen=True)
@@ -273,6 +291,19 @@ def run_ml_day_ahead_forecast(
         f"+ {nordpool_count} Nordpool day-ahead prices = {len(prices_df)} total price points"
     )
 
+    # ── Load gas SAP: build date → value map for training and inference ──────
+    gas_sap_rows = uow.session.execute(
+        select(GasSapORM).order_by(GasSapORM.date)
+    ).scalars().all()
+    gas_sap_map: dict[pd.Timestamp, float] = {
+        pd.Timestamp(r.date).tz_convert("UTC").normalize(): float(r.gas_sap)
+        for r in gas_sap_rows
+    }
+    log.info("Loaded %d gas SAP entries from DB", len(gas_sap_map))
+
+    # prices_ts used both for recent_mean_price on training rows and at inference
+    prices_ts = prices_df["day_ahead"].sort_index()
+
     ff = _to_dataframe(forecasts, ["id", "name", "created_at"]).set_index("id").sort_index()
     ff["created_at"] = pd.to_datetime(ff["created_at"], utc=True)
     ff["date"] = ff["created_at"].dt.tz_convert("GB").dt.normalize()
@@ -310,18 +341,32 @@ def run_ml_day_ahead_forecast(
     df["sin_hour"] = np.sin(2 * np.pi * df["time"] / 24)
     df["cos_hour"] = np.cos(2 * np.pi * df["time"] / 24)
 
+    # ── Gas SAP: map creation date → daily SAP value ─────────────────────────
+    df["gas_sap"] = df["created_at"].dt.normalize().map(gas_sap_map)
+
+    # ── recent_mean_price: 7-day mean of actual prices before created_at ─────
+    # Computed per forecast_id to avoid lookahead into test data.
+    fc_means: dict[int, float] = {}
+    for fid, grp in df.groupby("forecast_id"):
+        ca = grp["created_at"].iloc[0]
+        start = ca - pd.Timedelta(days=7)
+        mask = (prices_ts.index >= start) & (prices_ts.index < ca)
+        fc_means[int(fid)] = float(prices_ts[mask].mean()) if mask.sum() > 0 else float("nan")
+    df["recent_mean_price"] = df["forecast_id"].map(fc_means)
+
     train_df = df[df["forecast_id"].isin(ff_train.index)]
     train_df = train_df[train_df["days_ago"] < max_days]
     train_df = train_df[(train_df.index >= train_df["ag_start"]) & (train_df.index < train_df["ag_end"])]
-    train_df = train_df[list(LEGACY_FEATURES)].merge(prices_df[["day_ahead"]], left_index=True, right_index=True, how="inner")
-    # Allow NaN in features - XGBoost will learn to handle missing data
+    train_df = train_df[list(ML_FEATURES) + ["days_ago"]].merge(prices_df[["day_ahead"]], left_index=True, right_index=True, how="inner")
+    # Allow NaN in features - XGBoost handles missing data natively
     train_df = train_df.dropna(subset=["day_ahead"])  # Only require target to be present
     if len(train_df) < 30:
         raise ValueError("insufficient joined training rows after legacy filters")
 
     train_y = train_df.pop("day_ahead").astype(float)
-    train_x = train_df.astype(float)
-    sample_weights = ((np.log10((train_y - train_y.mean()).abs() + 10) * 5) - 4).round(0)
+    days_ago_vals = train_df.pop("days_ago").values
+    sample_weights = np.exp(-days_ago_vals / _ML_HALFLIFE_DAYS)
+    train_x = train_df[list(ML_FEATURES)].astype(float)
 
     model_kwargs: dict[str, str] = {}
     if use_gpu:
@@ -358,7 +403,7 @@ def run_ml_day_ahead_forecast(
     test_df = test_df[test_df.index > test_df["ag_start"]]
     test_df = test_df[test_df["days_ago"] < max_days]
     test_df = test_df.merge(prices_df[["day_ahead"]], left_index=True, right_index=True, how="inner")
-    test_df = test_df.dropna(subset=list(LEGACY_FEATURES) + ["day_ahead", "dt"])
+    test_df = test_df.dropna(subset=list(ML_FEATURES) + ["day_ahead", "dt"])
 
     fc = future_feature_frame.copy().sort_index().iloc[:point_count].copy()
     if fc.empty:
@@ -367,14 +412,26 @@ def run_ml_day_ahead_forecast(
     fc.index = pd.to_datetime(fc.index, utc=True)
     now_utc = pd.Timestamp.now(tz="UTC")
     fc["weekend"] = (fc.index.day_of_week >= 5).astype(int)
-    fc["days_ago"] = 0
     fc["time"] = fc.index.tz_convert("GB").hour + fc.index.minute / 60
     fc["dt"] = (fc.index - now_utc).total_seconds() / 86400
     fc["peak"] = ((fc["time"] >= 16) & (fc["time"] < 19)).astype(float)
     fc["sin_hour"] = np.sin(2 * np.pi * fc["time"] / 24)
     fc["cos_hour"] = np.cos(2 * np.pi * fc["time"] / 24)
 
-    feature_frame = fc.reindex(columns=list(LEGACY_FEATURES)).astype(float)
+    # Gas SAP at inference: use today's SAP if published, otherwise fall back to latest known
+    now_date_utc = pd.Timestamp(now_utc).normalize().tz_convert("UTC")
+    gas_sap_val = gas_sap_map.get(now_date_utc)
+    if gas_sap_val is None and gas_sap_map:
+        gas_sap_val = gas_sap_map[max(gas_sap_map.keys())]
+    fc["gas_sap"] = gas_sap_val if gas_sap_val is not None else float("nan")
+
+    # recent_mean_price at inference: 7-day mean of actual prices before now
+    recent_start = now_utc - pd.Timedelta(days=7)
+    recent_mask = (prices_ts.index >= recent_start) & (prices_ts.index < pd.Timestamp(now_utc))
+    recent_mean_val = float(prices_ts[recent_mask].mean()) if recent_mask.sum() > 0 else float("nan")
+    fc["recent_mean_price"] = recent_mean_val
+
+    feature_frame = fc.reindex(columns=list(ML_FEATURES)).astype(float)
     # Do NOT ffill/bfill - pass NaN to XGBoost which learned to handle missing values
     preds = pd.Series(_predict_with_dmatrix(model, feature_frame), index=fc.index, name="day_ahead").astype(float)
 
@@ -383,7 +440,7 @@ def run_ml_day_ahead_forecast(
     highs = preds * 1.05
     if (len(test_df) > 10) and (not no_ranges):
         results = test_df[["dt", "day_ahead"]].copy()
-        test_features = test_df[list(LEGACY_FEATURES)].astype(float)
+        test_features = test_df[list(ML_FEATURES)].astype(float)
         results["pred"] = _predict_with_dmatrix(model, test_features)
         results["residual"] = results["day_ahead"] - results["pred"]
 
@@ -430,6 +487,6 @@ def run_ml_day_ahead_forecast(
         cv_stdev_rmse=cv_stdev,
         training_rows=len(train_x),
         test_rows=len(test_df),
-        feature_columns=LEGACY_FEATURES,
+        feature_columns=ML_FEATURES,
         range_mode=range_mode,
     )

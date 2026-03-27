@@ -93,3 +93,11 @@ class ExternalSystemContextORM(Base):
     nuclear_mw: Mapped[float | None] = mapped_column(Float, nullable=True)
     pumped_storage_mw: Mapped[float | None] = mapped_column(Float, nullable=True)
     interconnector_net_mw: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class GasSapORM(Base):
+    __tablename__ = "prices_gas_sap"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, unique=True)
+    gas_sap: Mapped[float] = mapped_column(Float, nullable=False)

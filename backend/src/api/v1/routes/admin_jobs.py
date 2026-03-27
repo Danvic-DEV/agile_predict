@@ -26,6 +26,8 @@ from src.ml.ingest.system_context import fetch_fuelinst_context
 from src.repositories.types import AgileDataWrite
 from src.schemas.admin_jobs import (
     BackfillAgilePricesResponse,
+    BackfillGasSapRequest,
+    BackfillGasSapResponse,
     BootstrapForecastBundleRequest,
     BootstrapForecastBundleResponse,
     BootstrapForecastRequest,
@@ -88,6 +90,12 @@ def _refresh_feed_source(source_id: str) -> int:
     if source_id == "elexon_fuelinst":
         context = fetch_fuelinst_context(now_utc - timedelta(days=3), now_utc)
         return len(context)
+
+    if source_id == "national_gas_sap":
+        from src.ml.ingest.gas_sap import fetch_gas_sap
+        today = now_utc.date().isoformat()
+        sap = fetch_gas_sap(today, today)
+        return len(sap)
 
     raise ValueError(f"Unsupported feed source: {source_id}")
 
@@ -344,3 +352,39 @@ def backfill_agile_prices(
         raise http_error(400, "agile_backfill_validation_failed", "Agile backfill failed.", exc) from exc
     except Exception as exc:
         raise http_error(500, "agile_backfill_execution_failed", "Agile backfill failed.", exc) from exc
+
+
+@router.post("/backfill-gas-sap", response_model=BackfillGasSapResponse)
+def backfill_gas_sap(
+    payload: BackfillGasSapRequest,
+    uow: UnitOfWorkDep,
+) -> BackfillGasSapResponse:
+    """Backfill National Gas SAP data for a given date range.
+
+    Fetches Actual Day SAP (p/kWh) from the National Gas open-data API
+    and upserts it into the prices_gas_sap table, making it available
+    for ML training and inference.
+
+    Args:
+        payload.date_from: ISO date string YYYY-MM-DD (inclusive).
+        payload.date_to:   ISO date string YYYY-MM-DD (inclusive).
+    """
+    from src.ml.ingest.gas_sap import fetch_gas_sap, to_orm_rows
+
+    try:
+        gas_sap_by_date = fetch_gas_sap(payload.date_from, payload.date_to)
+        rows = to_orm_rows(gas_sap_by_date)
+        rows_written = uow.gas_sap_writes.upsert_many(rows)
+        uow.commit()
+    except RuntimeError as exc:
+        uow.rollback()
+        raise http_error(502, "gas_sap_fetch_failed", "Gas SAP backfill failed.", exc) from exc
+    except Exception as exc:
+        uow.rollback()
+        raise http_error(500, "gas_sap_backfill_failed", "Gas SAP backfill failed.", exc) from exc
+
+    return BackfillGasSapResponse(
+        rows_written=rows_written,
+        date_from=payload.date_from,
+        date_to=payload.date_to,
+    )

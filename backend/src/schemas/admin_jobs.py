@@ -82,3 +82,14 @@ class BackfillAgilePricesResponse(BaseModel):
     period_start: str
     period_end: str
     detail: str
+
+
+class BackfillGasSapRequest(BaseModel):
+    date_from: str
+    date_to: str
+
+
+class BackfillGasSapResponse(BaseModel):
+    rows_written: int
+    date_from: str
+    date_to: str

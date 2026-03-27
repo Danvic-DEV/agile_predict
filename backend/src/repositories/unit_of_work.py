@@ -10,6 +10,8 @@ from src.repositories.forecast_data_write_repo import ForecastDataWriteRepositor
 from src.repositories.forecast_repo import ForecastRepository
 from src.repositories.forecast_write_repo import ForecastWriteRepository
 from src.repositories.external_system_context_write_repo import ExternalSystemContextWriteRepository
+from src.repositories.gas_sap_repo import GasSapRepository
+from src.repositories.gas_sap_write_repo import GasSapWriteRepository
 from src.repositories.price_history_repo import PriceHistoryRepository
 from src.repositories.price_history_write_repo import PriceHistoryWriteRepository
 
@@ -27,6 +29,8 @@ class UnitOfWork:
         self.price_history = PriceHistoryRepository(session)
         self.price_history_writes = PriceHistoryWriteRepository(session)
         self.external_system_context_writes = ExternalSystemContextWriteRepository(session)
+        self.gas_sap = GasSapRepository(session)
+        self.gas_sap_writes = GasSapWriteRepository(session)
 
     def commit(self) -> None:
         self.session.commit()

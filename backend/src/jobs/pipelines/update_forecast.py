@@ -28,6 +28,7 @@ from src.domain.forecast_pipeline import ForecastRunResult, run_forecast_pipelin
 from src.ml.ingest.grid_weather import fetch_grid_weather_features, fetch_live_forecast_features
 from src.ml.ingest.nordpool import fetch_day_ahead_prices
 from src.ml.ingest.octopus_agile import fetch_agile_prices_all_regions
+from src.ml.ingest.gas_sap import fetch_gas_sap, to_orm_rows
 from src.ml.ingest.system_context import fetch_system_context_features
 from src.ml.gpu_support import probe_xgboost_cuda
 from src.ml.parity.day_ahead_xgb import check_ml_training_readiness, run_ml_day_ahead_forecast
@@ -426,6 +427,22 @@ def run_update_forecast_job(uow: UnitOfWork) -> ForecastRunResult:
             log.info("Upserted %s external system context rows", external_context_upsert_count)
     except Exception as exc:  # noqa: BLE001
         log.warning("External system context ingest failed (non-fatal): %s", exc)
+
+    # ------------------------------------------------------------------
+    # Step 3d: fetch today's National Gas SAP and upsert into GasSapORM.
+    # Published ~12:40 UK time, available before the 16:15 forecast window.
+    # Non-fatal — a missing SAP value causes the ML model to treat it as
+    # NaN (XGBoost handles missing features gracefully).
+    # ------------------------------------------------------------------
+    try:
+        today_str = datetime.now(timezone.utc).date().isoformat()
+        gas_sap_by_date = fetch_gas_sap(today_str, today_str)
+        if gas_sap_by_date:
+            gas_sap_orm_rows = to_orm_rows(gas_sap_by_date)
+            gas_sap_upsert_count = uow.gas_sap_writes.upsert_many(gas_sap_orm_rows)
+            log.info("Upserted %s gas SAP rows", gas_sap_upsert_count)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Gas SAP ingest failed (non-fatal): %s", exc)
 
     # ------------------------------------------------------------------
     # Step 4: prune history forecasts older than 730 days (keeps 2 years for year-over-year seasonality).

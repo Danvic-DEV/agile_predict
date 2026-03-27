@@ -33,6 +33,9 @@ FEED_SOURCES = {
     
     # Day-Ahead Prices
     "nordpool_da": {"name": "Nordpool Day-Ahead (UK)", "freq_seconds": 86400, "staleness_threshold_seconds": 172800},
+
+    # Gas
+    "national_gas_sap": {"name": "National Gas SAP (GB)", "freq_seconds": 86400, "staleness_threshold_seconds": 172800},
     
     # Weather
     "weather_open_meteo": {"name": "Weather (Open-Meteo)", "freq_seconds": 3600, "staleness_threshold_seconds": 7200},
