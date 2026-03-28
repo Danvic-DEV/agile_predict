@@ -46,7 +46,7 @@ ML_FEATURES: tuple[str, ...] = (
     "recent_overnight_mean",
 )
 
-_ML_HALFLIFE_DAYS: float = 21.0
+_ML_HALFLIFE_DAYS: float = 60.0
 
 
 @dataclass(frozen=True)
